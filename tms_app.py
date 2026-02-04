@@ -111,13 +111,25 @@ if guide_df is not None:
 
             # --- 통합 엑셀 다운로드 생성 ---
             if final_dfs:
-                st.divider()
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    for df in final_dfs:
-                        # 시트명 31자 제한 및 특수문자 제거
-                        s_name = df._sheet_name[:31]
-                        df.to_excel(writer, index=False, sheet_name=s_name)
+    st.divider()
+    output = BytesIO()
+    # 엔진을 openpyxl로 변경하여 더 안정적으로 저장합니다.
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        for df in final_dfs:
+            # 시트명 제한 대응 (31자)
+            s_name = str(df._sheet_name)[:31]
+            # 파일이 깨지지 않도록 index=False 설정
+            df.to_excel(writer, index=False, sheet_name=s_name)
+    
+    # 중요: 포인터를 처음으로 돌려야 파일 내용이 제대로 전달됩니다.
+    data = output.getvalue()
+    
+    st.download_button(
+        label=f"📥 {selected_sub} 통합 조사표 다운로드",
+        data=data,
+        file_name=f"TMS_Result.xlsx", # 파일명을 일단 간단하게 해서 테스트해보세요
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
                 
                 st.download_button(
                     label=f"📥 {selected_sub} 통합 조사표 다운로드",
@@ -127,3 +139,4 @@ if guide_df is not None:
                 )
     else:
         st.info("왼쪽 사이드바에서 개선내역을 선택하면 해당되는 통합시험 조사표를 발췌합니다.")
+
