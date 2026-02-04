@@ -4,50 +4,47 @@ from io import BytesIO
 
 st.set_page_config(page_title="TMS 통합조사표 생성기", layout="wide")
 
-st.title("🚀 TMS 개선내역별 상세항목 발췌 도구")
-st.info("개선내역을 선택하면 해당되는 시험방법 항목만 발췌하여 엑셀로 저장합니다.")
+st.title("🚀 TMS 통합조사표 자동 생성기")
+st.write("개선내역 파일과 조사표 파일을 업로드하면 데이터를 하나로 합쳐줍니다.")
 
-# 1. 파일 업로드
+# 1. 파일 업로드 섹션
 col1, col2 = st.columns(2)
 with col1:
-    file_method = st.file_uploader("📂 개선내역별 시험방법 엑셀 업로드", type=["xlsx"])
+    file_method = st.file_uploader("📂 개선내역별 시험방법 업로드", type=["xlsx"])
 with col2:
-    file_survey = st.file_uploader("📂 통합시험 조사표 엑셀 업로드", type=["xlsx"])
+    file_survey = st.file_uploader("📂 통합시험 조사표 양식 업로드", type=["xlsx"])
 
 if file_method and file_survey:
-    # 데이터 로드
-    df_method = pd.read_excel(file_method)
-    df_survey = pd.read_excel(file_survey)
+    try:
+        # 데이터 로드
+        df_method = pd.read_excel(file_method)
+        df_survey = pd.read_excel(file_survey)
 
-    # 2. 개선내역 선택 (사용자가 고를 수 있게)
-    target_list = df_method['개선내역'].unique()
-    selected_target = st.selectbox("🎯 발췌할 개선내역을 선택하세요", target_list)
-
-    if selected_target:
-        # 3. 데이터 필터링 (해당 개선내역의 시험방법 찾기)
-        # 예: 선택한 개선내역에 해당하는 '시험항목'이나 'ID'를 기준으로 발췌
-        target_methods = df_method[df_method['개선내역'] == selected_target]
+        st.subheader("📊 데이터 병합 처리")
         
-        # 통합시험 조사표에서 해당 항목들만 추출
-        # (조사표의 '시험항목' 컬럼이 기준이라고 가정)
-        result_df = df_survey[df_survey['시험항목'].isin(target_methods['시험항목'])]
+        # 2. 데이터 병합 (두 파일의 공통 컬럼인 '시험항목' 기준)
+        # ※ 실제 엑셀의 컬럼명에 따라 '시험항목' 부분을 수정해야 할 수 있습니다.
+        merged_df = pd.merge(df_method, df_survey, on="시험항목", how="inner")
 
-        st.success(f"✅ '{selected_target}'에 해당하는 {len(result_df)}개의 항목을 찾았습니다.")
-        st.dataframe(result_df) # 화면에 미리보기
+        if not merged_df.empty:
+            st.success(f"✅ 총 {len(merged_df)}건의 매칭된 데이터를 찾았습니다!")
+            st.dataframe(merged_df, use_container_width=True)
 
-        # 4. 엑셀 파일 생성 및 다운로드
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            result_df.to_excel(writer, index=False, sheet_name='발췌내역')
-        
-        processed_data = output.getvalue()
+            # 3. 엑셀 다운로드 버튼
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                merged_df.to_excel(writer, index=False, sheet_name='통합조사표_결과')
+            
+            st.download_button(
+                label="📥 합쳐진 엑셀 파일 다운로드",
+                data=output.getvalue(),
+                file_name="TMS_통합조사표_결과.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        else:
+            st.warning("⚠️ 두 파일에서 일치하는 '시험항목'을 찾지 못했습니다. 컬럼명을 확인해 주세요.")
 
-        st.download_button(
-            label="📥 발췌된 엑셀 파일 다운로드",
-            data=processed_data,
-            file_name=f"{selected_target}_상세내역.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
+    except Exception as e:
+        st.error(f"❌ 오류 발생: {e}")
 else:
-    st.warning("먼저 두 개의 엑셀 파일을 모두 업로드해 주세요.")
+    st.info("💡 왼쪽에는 개선내역 파일을, 오른쪽에는 조사표 양식 파일을 업로드해 주세요.")
