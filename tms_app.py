@@ -3,9 +3,10 @@ import pandas as pd
 from io import BytesIO
 
 # 1. 페이지 설정
-st.set_page_config(page_title="TMS 통합조사표 생성기", layout="wide")
+st.set_page_config(page_title="TMS 시험항목 도구", layout="wide")
 
-st.title("📋 TMS 개선내역별 전체 시험항목 발췌 도구")
+# 요청하신 대로 타이틀 변경
+st.title("📋 TMS 개선내역별 시험항목")
 
 # 2. 데이터 로드 함수
 @st.cache_data
@@ -48,10 +49,9 @@ if guide_df is not None:
         if target_row is not None:
             st.success(f"🎯 **선택:** {selected_sub}")
             
-            # 모든 데이터를 하나로 합칠 리스트
             all_data_frames = []
 
-            # --- 1. 통합시험 항목 (3~10번 열) ---
+            # --- 1. 통합시험 항목 ---
             test_items = [
                 ("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
                 ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
@@ -74,7 +74,7 @@ if guide_df is not None:
                             temp_df.insert(1, '시험항목', matched_name)
                             all_data_frames.append(temp_df)
 
-            # --- 2. 확인검사 항목 (11~21번 열) ---
+            # --- 2. 확인검사 항목 ---
             check_items = [
                 "외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", 
                 "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", 
@@ -88,15 +88,19 @@ if guide_df is not None:
                 check_list.append({"항목": name, "수행여부": status})
             
             check_df = pd.DataFrame(check_list)
-            st.table(check_df[check_df["수행여부"] == "수행"]) # 수행하는 것만 표로 표시
+            # 수행해야 할 항목만 화면에 깔끔하게 표시
+            active_checks = check_df[check_df["수행여부"] == "수행"]
+            if not active_checks.empty:
+                st.table(active_checks)
+            else:
+                st.write("대상 없음")
             
-            # 엑셀 병합용 데이터 정리
             check_df_for_excel = check_df.copy()
             check_df_for_excel.insert(0, '대분류', '확인검사')
             check_df_for_excel.rename(columns={'항목': '시험항목', '수행여부': '내용/결과'}, inplace=True)
             all_data_frames.append(check_df_for_excel)
 
-            # --- 3. 상대정확도 (22번 열) ---
+            # --- 3. 상대정확도 ---
             st.markdown("### 📊 3. 상대정확도 수행 여부")
             rel_status = "수행 대상" if is_checked(target_row.iloc[22]) else "대상 아님"
             if "수행" in rel_status:
@@ -107,23 +111,22 @@ if guide_df is not None:
             rel_df = pd.DataFrame([{"대분류": "상대정확도", "시험항목": "상대정확도 시험", "내용/결과": rel_status}])
             all_data_frames.append(rel_df)
 
-            # --- 💾 엑셀 저장 로직 ---
+            # --- 💾 엑셀 저장 ---
             if all_data_frames:
                 st.divider()
                 final_combined_df = pd.concat(all_data_frames, ignore_index=True)
                 
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    final_combined_df.to_excel(writer, index=False, sheet_name='전체시험조사표')
+                    final_combined_df.to_excel(writer, index=False, sheet_name='TMS_시험항목_통합')
                     
-                    # 서식 지정
-                    worksheet = writer.sheets['전체시험조사표']
-                    worksheet.set_column(0, 1, 15) # 대분류, 시험항목
-                    worksheet.set_column(2, 10, 25) # 상세내용들
+                    worksheet = writer.sheets['TMS_시험항목_통합']
+                    worksheet.set_column(0, 1, 18)
+                    worksheet.set_column(2, 10, 25)
                 
                 st.download_button(
-                    label="📥 전체 시험항목 통합 다운로드 (Excel)",
+                    label="📥 전체 시험항목 통합 엑셀 다운로드",
                     data=output.getvalue(),
-                    file_name=f"TMS_Full_Report_{selected_sub}.xlsx",
+                    file_name=f"TMS_Exam_Items_{selected_sub}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
