@@ -14,18 +14,18 @@ def load_all_data():
         # 가이드북 로드
         guide_path = '개선내역에 따른 시험방법(2025 최종).xlsx'
         guide_df = pd.read_excel(guide_path, sheet_name='★최종(가이드북)', skiprows=1)
-        guide_df.iloc[:, 1] = guide_df.iloc[:, 1].ffill() # 대분류 채우기
+        guide_df.iloc[:, 1] = guide_df.iloc[:, 1].ffill()
         
-        # 통합시험 조사표 로드 (모든 시트 가져오기)
+        # 통합시험 조사표 로드
         report_path = '1.통합시험 조사표.xlsx'
         all_sheets = pd.read_excel(report_path, sheet_name=None)
         
-        # 시트명 매칭을 위한 전처리 (공백 제거 맵)
+        # 시트명 매칭용 맵 (공백 제거)
         sheet_map = {name.replace(" ", ""): name for name in all_sheets.keys()}
         
         return guide_df, all_sheets, sheet_map
     except Exception as e:
-        st.error(f"⚠️ 엑셀 파일을 불러오지 못했습니다. 파일명을 확인하세요: {e}")
+        st.error(f"⚠️ 엑셀 파일을 불러오지 못했습니다: {e}")
         return None, None, None
 
 guide_df, report_sheets, sheet_map = load_all_data()
@@ -48,7 +48,6 @@ if guide_df is not None:
         selected_sub = st.selectbox("2. 상세내역", ["선택 안 함"] + sub_items)
 
     if selected_sub != "선택 안 함":
-        # 선택된 행 찾기
         target_row = None
         for _, row in filtered_df.iterrows():
             if str(row.iloc[2]).replace('\n', ' ').strip() == selected_sub:
@@ -58,28 +57,24 @@ if guide_df is not None:
         if target_row is not None:
             st.success(f"🎯 **선택 내역:** {selected_sub}")
             
-            # 매칭할 시험 항목 정의 (가이드북 열 순서 기준)
+            # 매칭할 시험 항목 (가이드북 열 순서 기준)
             test_items = [
                 ("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
                 ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
                 ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)
             ]
 
-            final_dfs = [] # 엑셀 저장용 리스트
+            final_dfs = [] # 엑셀 병합용 리스트
 
             st.markdown("### 📝 수행해야 할 통합시험 항목")
-            
-            # 2단 레이아웃 (왼쪽: 상세 내용 표출, 오른쪽: 요약 정보)
             col_main, col_side = st.columns([2, 1])
 
             with col_main:
                 for name, col_idx in test_items:
-                    # 가이드북 해당 열에 체크(O)가 되어 있는지 확인
                     if is_checked(target_row.iloc[col_idx]):
                         clean_name = name.replace(" ", "")
                         matched_name = None
                         
-                        # 시트 이름 매칭 시도
                         if name in report_sheets:
                             matched_name = name
                         elif clean_name in sheet_map:
@@ -88,55 +83,51 @@ if guide_df is not None:
                         if matched_name:
                             with st.expander(f"✅ {matched_name} 상세 내용", expanded=True):
                                 df_content = report_sheets[matched_name]
-                                # 데이터 표시 (NaN 제거 및 깔끔하게 출력)
                                 display_df = df_content.dropna(how='all').reset_index(drop=True)
                                 st.dataframe(display_df, use_container_width=True)
                                 
-                                # 병합용 리스트에 추가 (시트명 정보 포함)
-                                display_df._sheet_name = matched_name
-                                final_dfs.append(display_df)
+                                # 엑셀 저장을 위해 시트명을 데이터프레임 속성으로 임시 저장
+                                # 복사본을 만들어 데이터 오염 방지
+                                excel_df = display_df.copy()
+                                excel_df.attrs['sheet_name'] = matched_name
+                                final_dfs.append(excel_df)
                         else:
-                            st.warning(f"⚠️ '{name}'에 해당하는 시트를 엑셀에서 찾을 수 없습니다.")
+                            st.warning(f"⚠️ '{name}' 시트를 엑셀에서 찾을 수 없습니다.")
                     else:
                         st.write(f"⚪ {name}: 대상 아님")
 
             with col_side:
-                # 확인검사 및 상대정확도 요약
                 st.markdown("#### 🔍 추가 확인사항")
-                # 가이드북 열 11~21번(확인검사) 처리 로직 생략 가능하나 필요시 추가
                 if is_checked(target_row.iloc[22]):
                     st.error("📊 상대정확도: **수행 대상**")
                 else:
                     st.success("📊 상대정확도: **대상 아님**")
 
-            # --- 통합 엑셀 다운로드 생성 ---
+            # --- 통합 엑셀 다운로드 생성 (오류 방지 로직 강화) ---
             if final_dfs:
-    st.divider()
-    output = BytesIO()
-    # 엔진을 openpyxl로 변경하여 더 안정적으로 저장합니다.
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        for df in final_dfs:
-            # 시트명 제한 대응 (31자)
-            s_name = str(df._sheet_name)[:31]
-            # 파일이 깨지지 않도록 index=False 설정
-            df.to_excel(writer, index=False, sheet_name=s_name)
-    
-    # 중요: 포인터를 처음으로 돌려야 파일 내용이 제대로 전달됩니다.
-    data = output.getvalue()
-    
-    st.download_button(
-        label=f"📥 {selected_sub} 통합 조사표 다운로드",
-        data=data,
-        file_name=f"TMS_Result.xlsx", # 파일명을 일단 간단하게 해서 테스트해보세요
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+                st.divider()
                 
-                st.download_button(
-                    label=f"📥 {selected_sub} 통합 조사표 다운로드",
-                    data=output.getvalue(),
-                    file_name=f"TMS_통합시험_{selected_sub}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                # 메모리 버퍼에 엑셀 파일 생성
+                output = BytesIO()
+                try:
+                    # engine='openpyxl'이 가장 호환성이 좋습니다.
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        for df in final_dfs:
+                            # 엑셀 시트 이름 규칙: 최대 31자, 특수문자 / \ ? * : [ ] 제한
+                            s_name = df.attrs.get('sheet_name', 'Sheet')
+                            s_name = "".join([c for c in s_name if c not in r'/\?*:[]'])[:31]
+                            df.to_excel(writer, index=False, sheet_name=s_name)
+                    
+                    # 데이터 준비
+                    excel_data = output.getvalue()
+                    
+                    st.download_button(
+                        label=f"📥 {selected_sub} 통합 조사표 다운로드",
+                        data=excel_data,
+                        file_name=f"TMS_Checklist_{selected_sub}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                except Exception as e:
+                    st.error(f"엑셀 파일 생성 중 오류가 발생했습니다: {e}")
     else:
-        st.info("왼쪽 사이드바에서 개선내역을 선택하면 해당되는 통합시험 조사표를 발췌합니다.")
-
+        st.info("왼쪽 사이드바에서 상세내역을 선택해 주세요.")
