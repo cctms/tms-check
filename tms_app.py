@@ -11,7 +11,7 @@ st.title("📋 TMS 개선내역별 시험방법 발췌 도구")
 @st.cache_data
 def load_all_data():
     try:
-        # 파일명 확인 필수! (GitHub에 올린 이름과 대소문자까지 같아야 합니다)
+        # 파일 경로 (GitHub 저장소 내 파일명과 일치해야 함)
         guide_path = '개선내역에 따른 시험방법(2025 최종).xlsx'
         report_path = '1.통합시험 조사표.xlsx'
         
@@ -23,7 +23,7 @@ def load_all_data():
         
         return guide_df, report_sheets, sheet_map
     except Exception as e:
-        st.error(f"⚠️ 파일을 찾을 수 없습니다. GitHub 저장소에 엑셀 파일이 있는지 확인하세요. ({e})")
+        st.error(f"⚠️ 파일을 불러올 수 없습니다: {e}")
         return None, None, None
 
 guide_df, report_sheets, sheet_map = load_all_data()
@@ -68,39 +68,38 @@ if guide_df is not None:
 
                         if matched_name:
                             with st.expander(f"✅ {matched_name}", expanded=True):
-                                df_content = report_sheets[matched_name].dropna(how='all').reset_index(drop=True)
+                                # 뷰어 호환성을 위해 결측값을 빈칸으로 처리
+                                df_content = report_sheets[matched_name].fillna("")
                                 st.dataframe(df_content, use_container_width=True)
-                                # 시트 이름을 데이터에 직접 박아넣지 않고 별도 저장
                                 final_dfs.append((matched_name, df_content))
-                        else:
-                            st.warning(f"⚠️ '{name}' 시트 없음")
 
             with col_side:
                 st.markdown("#### 🔍 추가 확인")
                 if is_checked(target_row.iloc[22]): st.error("📊 상대정확도: **대상**")
                 else: st.success("📊 상대정확도: **미대상**")
 
-            # --- 🔥 오류 해결 핵심: 다운로드 로직 ---
+            # --- 🛠️ 엑셀 뷰어 호환 다운로드 로직 ---
             if final_dfs:
                 st.divider()
-                
-                # 1. 메모리에 엑셀 파일 생성
                 output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                
+                # 호환성이 가장 높은 xlsxwriter 엔진 사용
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     for s_name, df in final_dfs:
-                        # 엑셀 시트명 규칙 적용 (특수문자 제거 및 31자 제한)
-                        safe_name = "".join([c for c in s_name if c not in r'/\?*:[]'])[:31]
+                        # 시트 이름에서 특수문자 제거 및 길이 제한 (뷰어 에러 방지)
+                        safe_name = "".join([c for c in s_name if c.isalnum() or c in ' ._-'])[:31]
                         df.to_excel(writer, index=False, sheet_name=safe_name)
+                        
+                        # 열 너비 자동 조정 (뷰어에서 보기 편하게)
+                        worksheet = writer.sheets[safe_name]
+                        for i, col in enumerate(df.columns):
+                            worksheet.set_column(i, i, 20)
                 
-                # 2. 버퍼의 포인터를 0으로 돌려야 데이터가 누락되지 않음
-                output.seek(0)
-                processed_data = output.getvalue()
+                excel_data = output.getvalue()
                 
-                # 3. 데이터가 비어있는지 확인 후 버튼 생성
-                if processed_data:
-                    st.download_button(
-                        label="📥 발췌된 조사표 다운로드 (Excel)",
-                        data=processed_data,
-                        file_name=f"TMS_Result.xlsx", # 한글명 에러 방지를 위해 영어로 설정
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                st.download_button(
+                    label="📥 엑셀 뷰어용 파일 다운로드",
+                    data=excel_data,
+                    file_name="TMS_REPORT.xlsx", # 호환성을 위해 영어 파일명 권장
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
