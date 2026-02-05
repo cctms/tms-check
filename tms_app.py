@@ -6,21 +6,25 @@ from io import BytesIO
 # 페이지 설정
 st.set_page_config(page_title="수질 TMS 스마트 가이드", layout="wide")
 
-# 디자인 CSS: 제목 크기를 80px의 0.7배인 56px로 조정
+# 디자인 CSS
 st.markdown("""
     <style>
     .super-title { 
-        font-size: 56px !important;  /* 80px * 0.7 = 56px */
+        font-size: 56px !important; 
         font-weight: 800 !important; 
         color: #1E3A8A !important; 
         text-align: center !important; 
         margin-top: 30px !important;
-        margin-bottom: 40px !important; 
+        margin-bottom: 20px !important; 
         line-height: 1.2 !important;
         display: block !important;
-        letter-spacing: -1px; /* 글자 간격을 살짝 좁혀 더 세련되게 */
     }
-    
+    .chat-sub {
+        text-align: center;
+        color: #666;
+        font-size: 1.2rem;
+        margin-bottom: 40px;
+    }
     .section-header { 
         background: #1E3A8A; 
         color: white; 
@@ -30,6 +34,12 @@ st.markdown("""
         font-weight: 700; 
         font-size: 20px;
         margin-bottom: 15px; 
+    }
+    /* 챗봇 느낌의 입력창 스타일 */
+    .stTextInput > div > div > input {
+        border-radius: 25px !important;
+        padding: 15px 25px !important;
+        border: 2px solid #1E3A8A !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -72,20 +82,32 @@ def is_ok(val):
     s = str(val).replace(" ", "").upper()
     return any(m in s for m in ['O', 'ㅇ', '○', 'V', '◎', '대상'])
 
-# 제목 출력
+# 제목 및 챗봇 인사말
 st.markdown('<div class="super-title">수질TMS 개선내역에 따른 통합 조사표</div>', unsafe_allow_html=True)
+st.markdown('<p class="chat-sub">안녕하세요! 어떤 개선사항이 발생했나요? 아래에 질문해 주세요. 👋</p>', unsafe_allow_html=True)
 
 if df is not None:
     c_left, c_mid, c_right = st.columns([1, 2, 1])
     with c_mid:
-        search_q = st.text_input("🔍 개선내역 키워드 입력", placeholder="예: 측정기기 교체")
+        # 질문형 인터페이스
+        user_input = st.text_input("💬 질문하기", placeholder="예: 측정기기를 교체했는데 어떤 시험을 해야 하나요?")
     
-    if search_q:
-        matches = df[df.iloc[:, 2].astype(str).str.contains(search_q, na=False)]
+    if user_input:
+        # 간단한 형태소 분석 대용 (공백 기준 핵심 키워드 검색)
+        keywords = [k for k in user_input.split() if len(k) > 1]
+        
+        # 키워드 중 하나라도 포함된 항목 찾기
+        mask = pd.Series([False] * len(df))
+        for kw in keywords:
+            mask |= df.iloc[:, 2].astype(str).str.contains(kw, na=False)
+            
+        matches = df[mask]
+        
         if not matches.empty:
             matches['dp'] = matches.apply(lambda x: f"[{x.iloc[1]}] {x.iloc[2]}", axis=1)
             with c_mid:
-                sel = st.selectbox("📌 항목 선택", ["선택하세요"] + matches['dp'].tolist())
+                st.info(f"🧐 질문하신 내용과 관련된 {len(matches)}개의 개선내역을 찾았습니다.")
+                sel = st.selectbox("가장 적절한 항목을 선택해 주세요:", ["선택하세요"] + matches['dp'].tolist())
             
             if sel != "선택하세요":
                 target_row = matches[matches['dp'] == sel].iloc[0]
@@ -134,8 +156,14 @@ if df is not None:
                 
                 st.divider()
                 if any(combined_sheets.values()):
+                    st.success(f"✅ 선택하신 '{sel}' 항목에 대한 통합 조사표가 준비되었습니다.")
                     st.download_button(
-                        label=f"📥 {sel} 통합 조사표 다운로드",
+                        label="📥 통합 조사표 다운로드",
                         data=output_xlsx.getvalue(),
                         file_name=f"수질TMS_통합조사표_{sel.replace(' ', '_')}.xlsx"
                     )
+        else:
+            with c_mid:
+                st.warning("죄송합니다. 질문하신 내용과 관련된 개선내역을 찾지 못했어요. 핵심 단어(예: 교체, 수리, 이전)를 포함해 다시 말씀해 주시겠어요?")
+else:
+    st.error("데이터 파일을 불러올 수 없습니다.")
