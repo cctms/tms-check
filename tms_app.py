@@ -55,7 +55,6 @@ if df is not None:
                     t_l = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5), ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8), ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
                     for nm, idx in t_l:
                         if ck(row.iloc[idx]) or (is_c and idx in [9, 10]):
-                            # 통합시험 매칭 로직
                             for s_name in r_s.keys():
                                 if nm.replace(" ", "") in str(s_name).replace(" ", ""):
                                     with st.expander(f"✅ {nm}"):
@@ -64,36 +63,33 @@ if df is not None:
 
                 with col2:
                     st.subheader("2. 확인검사")
-                    # 가이드북 컬럼 순서에 따른 매칭 키워드 (인덱스 11번부터 시작)
-                    # 입지조건, 유량계 등을 가이드북의 열 순서에 맞춰 리스트업했습니다.
-                    c_guide = [
-                        ("외관 및 구조", 11), ("전원전압 변동", 12), ("절연저항", 13), 
-                        ("공급전압의 안정성", 14), ("반복성", 15), ("제로 및 스팬 드리프트", 16), 
-                        ("응답시간", 17), ("직선성", 18), ("유입전류 안정성", 19), 
-                        ("간섭영향", 20), ("검출한계", 21), 
-                        ("입지조건", None), ("유량계", None) # 가이드북에 별도 열이 있다면 인덱스 추가 필요
-                    ]
-                    
-                    # 만약 가이드북 엑셀에 '입지조건'이나 '유량계' 열이 별도로 있다면 
-                    # 아래 active_keywords에 추가되는 로직이 작동합니다.
-                    w_sub = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
+                    # 확인할 키워드 그룹 정의
                     active_keywords = []
-
-                    for nm, idx in c_guide:
-                        # 인덱스가 지정된 경우 해당 열의 체크 여부 확인
-                        if idx is not None and ck(row.iloc[idx]):
+                    
+                    # 1. 고정 인덱스 항목 (외관 및 구조 ~ 검출한계)
+                    c_guide = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
+                    w_sub = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
+                    
+                    for i, nm in enumerate(c_guide):
+                        if ck(row.iloc[11+i]):
                             if nm == "외관 및 구조": active_keywords.extend(w_sub)
                             else: active_keywords.append(nm)
-                        # 만약 명칭으로 가이드북 열을 찾아야 한다면 (예: 22번 이후 열에 입지조건 등이 있는 경우)
-                        elif idx is None:
-                            # 가이드북 행 전체에서 해당 명칭이 체크되었는지 확인하는 로직 (필요시)
-                            for col_idx, val in enumerate(row):
-                                if nm in str(df.columns[col_idx]) and ck(val):
-                                    active_keywords.append(nm)
-                    
+
+                    # 2. 추가 요청 항목 (입지조건, 유량계 누적값) - 가이드북 열 이름에서 검색
+                    for col_name in df.columns:
+                        col_str = str(col_name)
+                        if any(k in col_str for k in ["입지조건", "유량계", "누적값"]):
+                            # 해당 열의 데이터를 가져와서 체크되었는지 확인
+                            val = row[col_name]
+                            if ck(val):
+                                if "입지조건" in col_str: active_keywords.append("입지조건")
+                                if "유량계" in col_str or "누적값" in col_str: active_keywords.append("유량")
+
                     if c_s:
+                        # 조사표의 시트 순서대로 루프
                         for s_name in c_s.keys():
                             s_clean = str(s_name).replace(" ", "")
+                            # 활성화된 키워드 중 하나라도 시트명에 포함되면 출력
                             if any(str(kw).replace(" ", "") in s_clean for kw in active_keywords):
                                 with st.expander(f"✅ {s_name}"):
                                     t = c_s[s_name].fillna(""); st.dataframe(t)
