@@ -40,16 +40,22 @@ if guide_df is not None:
         search_results = guide_df[guide_df.iloc[:, 2].str.contains(search_query, na=False, case=False)]
         
         if not search_results.empty:
+            # 검색 결과 리스트 생성
             options = [f"[{row.iloc[1]}] {str(row.iloc[2]).strip()}" for _, row in search_results.iterrows()]
             selected_option = st.selectbox(f"검색 결과 ({len(options)}건):", ["선택하세요"] + options)
             
             if selected_option != "선택하세요":
+                # 선택된 항목의 인덱스로 실제 데이터 추출
                 idx = options.index(selected_option)
                 target_row = search_results.iloc[idx]
+                
+                # 키워드가 아닌, 선택된 '상세내역명'을 변수에 저장
+                full_display_name = selected_option 
                 selected_sub = str(target_row.iloc[2]).replace('\n', ' ').strip()
                 
                 st.divider()
-                st.subheader(f"🎯 분석 결과: {selected_sub}")
+                # 수정된 부분: 키워드가 아닌 선택된 전체 명칭을 출력
+                st.subheader(f"🎯 분석 결과: {full_display_name}")
                 
                 all_data_frames = []
 
@@ -117,9 +123,10 @@ if guide_df is not None:
                         final_df.to_excel(writer, index=False, sheet_name='전체항목')
                     
                     st.download_button(
+                        # 파일 이름도 선택된 내역명으로 저장되도록 설정
                         label="📥 전체 결과 엑셀 다운로드",
                         data=output.getvalue(),
-                        file_name=f"TMS_Full_Report.xlsx",
+                        file_name=f"TMS_Report_{selected_sub}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
         else:
