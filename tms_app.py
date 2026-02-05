@@ -17,9 +17,8 @@ def load_data():
         
         xl_g = pd.ExcelFile(g_p)
         g_sn = next((s for s in xl_g.sheet_names if '가이드북' in s or '시험방법' in s), xl_g.sheet_names[0])
-        # 헤더가 있는 행을 자동으로 찾거나 지정 (보통 2번째 줄이 헤더이므로 skiprows=1)
         df = pd.read_excel(g_p, sheet_name=g_sn, skiprows=1)
-        df.iloc[:, 1] = df.iloc[:, 1].ffill() # 분류 채우기
+        df.iloc[:, 1] = df.iloc[:, 1].ffill() 
         
         r_s = pd.read_excel(r_p, sheet_name=None) if r_p else {}
         c_s = pd.read_excel(c_p, sheet_name=None) if c_p else {}
@@ -30,10 +29,12 @@ def load_data():
 
 df, r_s, c_s, s_s, f_list = load_data()
 
+# 문자열 안에 'O', 'V', '○' 등이 포함되어 있는지 검사하는 함수
 def ck(v):
     if pd.isna(v): return False
     s = str(v).replace(" ", "").upper()
-    return any(m in s for m in ['O', '○', 'V', 'CHECK'])
+    # 'O'가 포함되어 있거나 특정 체크 기호가 있는 경우 True
+    return any(m in s for m in ['O', '○', 'V', 'CHECK', '◎'])
 
 st.title("📋 수질 TMS 시험항목 (2025 최종 기준)")
 
@@ -49,11 +50,13 @@ if df is not None:
                 row = res[res['dn'] == sel].iloc[0]
                 all_d = []
                 
-                # 가이드북에서 'O' 표시된 모든 열의 이름을 수집
-                checked_columns = []
+                # 체크된 열의 키워드 추출
+                checked_keywords = []
                 for col_name in df.columns:
                     if ck(row[col_name]):
-                        checked_columns.append(str(col_name).replace(" ", ""))
+                        # 열 이름에서 핵심 단어 추출 (예: "측정소 입지조건" -> "입지조건")
+                        clean_col = str(col_name).replace(" ", "").replace("\n", "")
+                        checked_keywords.append(clean_col)
 
                 col1, col2, col3 = st.columns(3)
 
@@ -63,32 +66,41 @@ if df is not None:
                     found_r = False
                     for s_name in r_s.keys():
                         s_clean = str(s_name).replace(" ", "")
-                        # 체크된 열 이름이 시트 이름에 포함되어 있는지 확인
-                        if any(col in s_clean or s_clean in col for col in checked_columns):
+                        if any(kw in s_clean or s_clean in kw for kw in checked_keywords):
                             with st.expander(f"✅ {s_name}"):
                                 t = r_s[s_name].fillna(""); st.dataframe(t)
                                 t_exp = t.copy(); t_exp.insert(0, '시험', s_name); all_d.append(t_exp)
                                 found_r = True
                     if not found_r: st.info("해당사항 없음")
 
-                # 2. 확인검사 (탭 순서 유지)
+                # 2. 확인검사 (입지조건, 유량계 누적값 포함)
                 with col2:
                     st.subheader("2. 확인검사")
                     found_c = False
-                    # 외관 및 구조 예외 처리 (구조, 시료, 승인 등 포함)
+                    # 외관 및 구조 예외 키워드
                     w_sub = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
+                    # 유량 관련 키워드 통합
+                    flow_keywords = ["유량", "누적"]
                     
                     if c_s:
-                        for s_name in c_s.keys(): # 엑셀 시트 순서대로
+                        for s_name in c_s.keys():
                             s_clean = str(s_name).replace(" ", "")
+                            match = False
                             
-                            # 일반적인 매칭
-                            match = any(col in s_clean or s_clean in col for col in checked_columns)
+                            # 1) 일반 매칭
+                            if any(kw in s_clean or s_clean in kw for kw in checked_keywords):
+                                match = True
                             
-                            # '외관' 관련 예외 매칭
-                            if not match and any("외관" in col for col in checked_columns):
-                                match = any(sub in s_clean for sub in w_sub)
-                                
+                            # 2) '외관' 체크 시 관련 시트 매칭
+                            if not match and any("외관" in kw for kw in checked_keywords):
+                                if any(sub in s_clean for sub in w_sub):
+                                    match = True
+                            
+                            # 3) '유량' 또는 '누적값' 체크 시 매칭
+                            if not match and any(f_kw in "".join(checked_keywords) for f_kw in flow_keywords):
+                                if any(f_kw in s_clean for f_kw in flow_keywords):
+                                    match = True
+                                    
                             if match:
                                 with st.expander(f"✅ {s_name}"):
                                     t = c_s[s_name].fillna(""); st.dataframe(t)
@@ -100,7 +112,7 @@ if df is not None:
                 with col3:
                     st.subheader("3. 상대정확도")
                     found_s = False
-                    if any("상대정확도" in col for col in checked_columns):
+                    if any("상대" in kw for kw in checked_keywords):
                         if s_s:
                             k = list(s_s.keys())[0]
                             with st.expander("✅ 상대정확도"):
