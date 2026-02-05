@@ -21,7 +21,6 @@ def load_data():
         df = pd.read_excel(g_p, sheet_name=g_sn, skiprows=1)
         df.iloc[:, 1] = df.iloc[:, 1].ffill()
         
-        # sheet_name=None으로 가져오면 순서가 유지된 딕셔너리가 반환됩니다.
         r_s = pd.read_excel(r_p, sheet_name=None) if r_p else {}
         c_s = pd.read_excel(c_p, sheet_name=None) if c_p else {}
         s_s = pd.read_excel(s_p, sheet_name=None) if s_p else {}
@@ -42,11 +41,6 @@ def find_sheet_strict(sheets_dict, target_name):
     for s_name in sheets_dict.keys():
         s_clean = str(s_name).replace(" ", "")
         if t_clean in s_clean or s_clean in t_clean: return s_name
-    t_num = re.findall(r'\d+', str(target_name))
-    if t_num:
-        for s_name in sheets_dict.keys():
-            s_num = re.findall(r'\d+', str(s_name))
-            if s_num and t_num[0] == s_num[0]: return s_name
     return None
 
 st.title("📋 수질 TMS 시험항목")
@@ -77,22 +71,23 @@ if df is not None:
 
                 with col2:
                     st.subheader("2. 확인검사")
-                    # 가이드북에서 'O' 표시된 항목들의 키워드 추출
+                    # 필수 포함 및 체크 기반 키워드 리스트
                     c_guide = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
                     w_guide = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
+                    # 누락되었던 필수 키워드 추가
+                    extra_kw = ["입지조건", "유량계", "누적값"]
                     
-                    active_keywords = []
+                    active_keywords = [] + extra_kw
                     for i, nm in enumerate(c_guide):
                         if ck(row.iloc[11+i]):
                             if nm == "외관 및 구조": active_keywords.extend(w_guide)
                             else: active_keywords.append(nm)
                     
-                    # 실제 엑셀 시트 순서대로 순회하면서, 활성화된 키워드와 매칭되면 출력
                     if c_s:
+                        # 엑셀 시트의 실제 탭 순서대로 순회
                         for s_name in c_s.keys():
                             s_clean = str(s_name).replace(" ", "")
-                            # 현재 시트가 가이드북에서 체크된 키워드 중 하나를 포함하는지 확인
-                            if any(str(kw).replace(" ", "") in s_clean or s_clean in str(kw).replace(" ", "") for kw in active_keywords):
+                            if any(str(kw).replace(" ", "") in s_clean for kw in active_keywords):
                                 with st.expander(f"✅ {s_name}"):
                                     t = c_s[s_name].fillna(""); st.dataframe(t)
                                     t_exp = t.copy(); t_exp.insert(0, '시험', s_name); all_d.append(t_exp)
