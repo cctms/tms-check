@@ -25,6 +25,15 @@ st.markdown("""
     .stTextInput > div > div > input {
         border-radius: 25px !important; padding: 15px 25px !important; border: 2px solid #1E3A8A !important;
     }
+    /* 다운로드 버튼 강조 스타일 */
+    .stDownloadButton > button {
+        width: 100% !important;
+        background-color: #28a745 !important;
+        color: white !important;
+        font-weight: bold !important;
+        border-radius: 10px !important;
+        height: 3em !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -74,12 +83,8 @@ if df is not None:
         user_input = st.text_input("💬 질문하기", placeholder="발생한 개선사항을 편하게 적어주세요.")
     
     if user_input:
-        # [수정 포인트] 단순 띄어쓰기 분리가 아니라, 
-        # 사용자의 입력 문장 전체를 데이터와 대조하거나 주요 단어(교체, 수리, 이전 등)를 추출
         search_words = ["교체", "수리", "이전", "신규", "부품", "오버홀", "전송", "변경"]
         found_keywords = [w for w in search_words if w in user_input]
-        
-        # 만약 정의된 핵심 단어가 없다면 입력된 단어들로 검색
         if not found_keywords:
             found_keywords = [k for k in user_input.split() if len(k) > 1]
 
@@ -99,54 +104,62 @@ if df is not None:
                 target_row = matches[matches['dp'] == sel].iloc[0]
                 combined_sheets = {"통합시험": [], "확인검사": [], "상대정확도": []}
                 
-                st.write("---")
-                col1, col2, col3 = st.columns(3)
-                col1.markdown('<p class="section-header">🛠 1. 통합시험</p>', unsafe_allow_html=True)
-                col2.markdown('<p class="section-header">⚖️ 2. 확인검사</p>', unsafe_allow_html=True)
-                col3.markdown('<p class="section-header">📊 3. 상대정확도</p>', unsafe_allow_html=True)
-
+                # 데이터 미리 수집 (다운로드 버튼을 먼저 띄우기 위해)
                 for i in range(3, len(df.columns)):
                     if is_ok(target_row[i]):
                         cat_raw = str(top_h[i]); name = str(sub_h[i])
-                        
-                        if "상대" in cat_raw:
-                            main_cat = "상대정확도"; target_col = col3
-                            if name.lower() in ['nan', '', 'none']: name = "상대정확도시험"
-                        elif "통합" in cat_raw:
-                            main_cat = "통합시험"; target_col = col1
-                        elif "확인" in cat_raw:
-                            main_cat = "확인검사"; target_col = col2
+                        if "상대" in cat_raw: m_cat = "상대정확도"
+                        elif "통합" in cat_raw: m_cat = "통합시험"
+                        elif "확인" in cat_raw: m_cat = "확인검사"
                         else: continue
+                        
+                        sheets = survey_data.get(m_cat, {})
+                        for s_name, s_df in sheets.items():
+                            if (m_cat == "상대정확도") or (s_name.replace(" ","") in name.replace(" ","")) or (name.replace(" ","") in s_name.replace(" ","")):
+                                header_df = pd.DataFrame([[f"■ {name}"]], columns=[s_df.columns[0] if not s_df.empty else "항목"])
+                                combined_sheets[m_cat].extend([header_df, s_df, pd.DataFrame([[""]])])
+                                if m_cat != "상대정확도": break
 
-                        with target_col:
-                            with st.expander(f"✅ {name}", expanded=False):
-                                sheets = survey_data.get(main_cat, {})
-                                found = False
-                                for s_name, s_df in sheets.items():
-                                    if (main_cat == "상대정확도") or (s_name.replace(" ","") in name.replace(" ","")) or (name.replace(" ","") in s_name.replace(" ","")):
-                                        st.dataframe(s_df.fillna(""), use_container_width=True)
-                                        header_df = pd.DataFrame([[f"■ {name}"]], columns=[s_df.columns[0] if not s_df.empty else "항목"])
-                                        combined_sheets[main_cat].append(header_df)
-                                        combined_sheets[main_cat].append(s_df)
-                                        combined_sheets[main_cat].append(pd.DataFrame([[""]]))
-                                        found = True
-                                        if main_cat != "상대정확도": break
-                                if not found: st.caption("⚠️ 시트 매칭 실패")
-
+                # --- [상단 다운로드 영역] ---
                 output_xlsx = BytesIO()
                 with pd.ExcelWriter(output_xlsx, engine='xlsxwriter') as writer:
                     for s_title, d_list in combined_sheets.items():
                         if d_list:
                             pd.concat(d_list, ignore_index=True).to_excel(writer, sheet_name=s_title, index=False)
                 
-                st.divider()
-                if any(combined_sheets.values()):
-                    st.success(f"✅ 조사가 완료되었습니다. 파일을 다운로드해 주세요.")
+                with c_mid:
+                    st.success(f"✅ 조사가 완료되었습니다. 바로 아래 버튼으로 파일을 받으세요!")
                     st.download_button(
-                        label="📥 통합 조사표 다운로드",
+                        label="📥 클릭하여 통합 조사표(Excel) 다운로드",
                         data=output_xlsx.getvalue(),
-                        file_name=f"수질TMS_통합조사표_{sel.replace(' ', '_')}.xlsx"
+                        file_name=f"수질TMS_통합조사표_{sel.replace(' ', '_')}.xlsx",
+                        key="top_download_btn"
                     )
+                # --------------------------
+
+                st.write("---")
+                st.caption("💡 아래는 조사표의 상세 미리보기입니다.")
+                col1, col2, col3 = st.columns(3)
+                col1.markdown('<p class="section-header">🛠 1. 통합시험</p>', unsafe_allow_html=True)
+                col2.markdown('<p class="section-header">⚖️ 2. 확인검사</p>', unsafe_allow_html=True)
+                col3.markdown('<p class="section-header">📊 3. 상대정확도</p>', unsafe_allow_html=True)
+
+                # 하단 미리보기 영역 재출력
+                for i in range(3, len(df.columns)):
+                    if is_ok(target_row[i]):
+                        cat_raw = str(top_h[i]); name = str(sub_h[i])
+                        if "상대" in cat_raw: m_cat = "상대정확도"; t_col = col3
+                        elif "통합" in cat_raw: m_cat = "통합시험"; t_col = col1
+                        elif "확인" in cat_raw: m_cat = "확인검사"; t_col = col2
+                        else: continue
+
+                        with t_col:
+                            with st.expander(f"✅ {name}", expanded=False):
+                                sheets = survey_data.get(m_cat, {})
+                                for s_name, s_df in sheets.items():
+                                    if (m_cat == "상대정확도") or (s_name.replace(" ","") in name.replace(" ","")) or (name.replace(" ","") in s_name.replace(" ","")):
+                                        st.dataframe(s_df.fillna(""), use_container_width=True)
+                                        if m_cat != "상대정확도": break
         else:
             with c_mid:
                 st.warning("단어를 조금만 더 단순하게 입력해 보시겠어요? (예: 기기 교체, 펌프 수리 등)")
