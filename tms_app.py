@@ -35,7 +35,7 @@ def load_all_data():
         rel_path = next((f for f in files if '상대정확도' in f or '3.상대정확도' in f), None)
         
         if not guide_path:
-            st.error(f"❌ 가이드북 파일을 찾을 수 없습니다. 현재 폴더 파일: {files}")
+            st.error(f"❌ 가이드북 파일을 찾을 수 없습니다.")
             return None, None, None, None
             
         guide_df = pd.read_excel(guide_path, sheet_name='★최종(가이드북)', skiprows=1)
@@ -55,7 +55,7 @@ guide_df, report_sheets, check_sheets, rel_sheets = load_all_data()
 def is_checked(value):
     if pd.isna(value): return False
     val_str = str(value).replace(" ", "").upper()
-    return any(m in val_str for m in ['O', '○', '오', 'ㅇ', 'V'])
+    return any(m in val_str for m in ['O', '○', '오', 'ㅇ', 'V', 'CHECK'])
 
 if guide_df is not None:
     st.markdown("### 🔍 개선내역 검색")
@@ -79,28 +79,42 @@ if guide_df is not None:
                 all_data_frames = []
                 col1, col2, col3 = st.columns([1, 1, 1])
 
-                # [1. 통합시험]
+                # [1. 통합시험 섹션 수정]
                 with col1:
                     st.markdown("#### 📝 1. 통합시험")
-                    test_items = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
-                                  ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
-                                  ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
-                    found_test = any(is_checked(target_row.iloc[col_idx]) for _, col_idx in test_items)
-                    if found_test:
+                    # 인덱스 3번부터 10번까지가 통합시험 1~8번 항목임
+                    test_items = [
+                        ("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
+                        ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
+                        ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)
+                    ]
+                    
+                    # '기기교체' 단어가 포함된 경우 1~8번을 강제로 활성화하거나 체크를 정밀하게 검사
+                    found_any_test = any(is_checked(target_row.iloc[idx]) for _, idx in test_items)
+                    
+                    if found_any_test:
                         st.error("📍 수행 대상")
                         for name, col_idx in test_items:
-                            if is_checked(target_row.iloc[col_idx]):
+                            # 엑셀에 체크가 되어 있거나, 기기교체 건에 대해 필수적인 7,8번 항목 강제 확인 로직 포함
+                            if is_checked(target_row.iloc[col_idx]) or ("교체" in selected_sub and col_idx in [9, 10]):
                                 clean_name = name.replace(" ", "")
-                                matched_name = next((s for s in report_sheets.keys() if s.replace(" ", "") == clean_name), None)
+                                # 시트명 매칭 (공백 제거 후 비교)
+                                matched_name = next((s for s in report_sheets.keys() if s.replace(" ", "").strip() in clean_name or clean_name in s.replace(" ", "")), None)
+                                
                                 if matched_name:
-                                    with st.expander(f"✅ {matched_name}", expanded=False):
+                                    with st.expander(f"✅ {name}", expanded=False):
                                         df = report_sheets[matched_name].fillna("")
                                         st.dataframe(df, use_container_width=True)
-                                        df_exp = df.copy(); df_exp.insert(0, '대분류', '통합시험'); df_exp.insert(1, '시험항목', matched_name)
+                                        df_exp = df.copy()
+                                        df_exp.insert(0, '대분류', '통합시험')
+                                        df_exp.insert(1, '시험항목', name)
                                         all_data_frames.append(df_exp)
-                    else: st.info("📍 대상 아님")
+                                else:
+                                    st.write(f"✅ {name} (조사표 시트 미연결)")
+                    else:
+                        st.info("📍 대상 아님")
 
-                # [2. 확인검사]
+                # [2. 확인검사 섹션]
                 with col2:
                     st.markdown("#### 🔍 2. 확인검사")
                     check_base_names = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
@@ -128,22 +142,22 @@ if guide_df is not None:
                                 else: st.write(f"✅ {name}")
                     else: st.info("📍 대상 아님")
 
-                # [3. 상대정확도]
+                # [3. 상대정확도 섹션]
                 with col3:
                     st.markdown("#### 📊 3. 상대정확도")
                     if is_checked(target_row.iloc[22]):
                         st.error("📍 수행 대상")
                         if rel_sheets:
                             rel_s_name = next((s for s in rel_sheets.keys() if '상대정확도' in s), list(rel_sheets.keys())[0])
-                            with st.expander(f"✅ 상대정확도 결과서", expanded=False):
+                            with st.expander(f"✅ 상대정확도 시험", expanded=False):
                                 df = rel_sheets[rel_s_name].fillna("")
                                 st.dataframe(df, use_container_width=True)
-                                df_exp = df.copy(); df_exp.insert(0, '대분류', '상대정확도'); df_exp.insert(1, '시험항목', '상대정확도 시험')
+                                df_exp = df.copy(); df_exp.insert(0, '대분류', '상대정확도'); df_exp.insert(1, '시험항목', '상대정확도')
                                 all_data_frames.append(df_exp)
                         else: st.info("✅ 상대정확도 (조사표 없음)")
                     else: st.info("📍 대상 아님")
 
-                # 💾 엑셀 다운로드 (에러 방지를 위해 한 줄로 정리)
+                # 💾 엑셀 다운로드
                 if all_data_frames:
                     st.divider()
                     final_df = pd.concat(all_data_frames, ignore_index=True)
