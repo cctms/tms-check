@@ -15,6 +15,7 @@ def load_all_data():
         report_path = '1.통합시험 조사표.xlsx'
         
         guide_df = pd.read_excel(guide_path, sheet_name='★최종(가이드북)', skiprows=1)
+        # 대분류 빈칸 채우기
         guide_df.iloc[:, 1] = guide_df.iloc[:, 1].ffill()
         
         report_sheets = pd.read_excel(report_path, sheet_name=None)
@@ -33,6 +34,7 @@ def is_checked(value):
     return any(m in val_str for m in ['O', '○', '오', 'ㅇ', 'V'])
 
 if guide_df is not None:
+    # --- 🔍 검색 기능 ---
     st.markdown("### 🔍 개선내역 검색")
     search_query = st.text_input("찾으시는 개선내역의 키워드를 입력하세요", "")
 
@@ -41,29 +43,41 @@ if guide_df is not None:
         search_results = guide_df[guide_df.iloc[:, 2].str.contains(search_query, na=False, case=False)].copy()
         
         if not search_results.empty:
-            # 선택용 리스트 생성
+            # 선택용 리스트 생성 (대분류 + 상세내역)
             search_results['display_name'] = search_results.apply(lambda x: f"[{x.iloc[1]}] {str(x.iloc[2]).strip()}", axis=1)
             options = search_results['display_name'].tolist()
             
-            # selectbox에서 선택
             selected_option = st.selectbox(f"검색 결과 ({len(options)}건):", ["선택하세요"] + options)
             
             if selected_option != "선택하세요":
-                # 중요: 선택된 텍스트와 정확히 일치하는 행을 찾음
+                # 선택된 행 데이터 추출
                 target_row = search_results[search_results['display_name'] == selected_option].iloc[0]
-                
-                # 분석 결과에 표시할 전체 이름
                 full_display_name = selected_option 
-                # 엑셀 파일용 짧은 이름 (상세내역만)
                 selected_sub = str(target_row.iloc[2]).replace('\n', ' ').strip()
                 
                 st.divider()
-                # 이제 잘림 없이 전체 문구 출력
-                st.subheader(f"🎯 분석 결과: {full_display_name}")
+                
+                # --- 🎯 분석 결과 제목 (줄바꿈 방지 스타일 적용) ---
+                st.markdown(
+                    f"""
+                    <div style="
+                        white-space: nowrap; 
+                        overflow-x: auto; 
+                        font-size: 1.6rem; 
+                        font-weight: 700; 
+                        padding: 10px 0px;
+                        color: #0E1117;
+                        border-bottom: 2px solid #F0F2F6;
+                        margin-bottom: 20px;">
+                        🎯 분석 결과: {full_display_name}
+                    </div>
+                    """, 
+                    unsafe_allow_html=True
+                )
                 
                 all_data_frames = []
 
-                # --- 🎨 3단 레이아웃 ---
+                # --- 🎨 3단 레이아웃 설정 ---
                 col1, col2, col3 = st.columns([1.2, 1, 0.8])
 
                 # [1단: 통합시험]
@@ -74,8 +88,10 @@ if guide_df is not None:
                         ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
                         ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)
                     ]
+                    found_test = False
                     for name, col_idx in test_items:
                         if is_checked(target_row.iloc[col_idx]):
+                            found_test = True
                             clean_name = name.replace(" ", "")
                             matched_name = next((val for key, val in sheet_map.items() if key == clean_name), None) or (name if name in report_sheets else None)
                             if matched_name:
@@ -87,6 +103,8 @@ if guide_df is not None:
                                     temp_df.insert(0, '대분류', '통합시험')
                                     temp_df.insert(1, '시험항목', matched_name)
                                     all_data_frames.append(temp_df)
+                    if not found_test:
+                        st.write("대상 없음")
 
                 # [2단: 확인검사]
                 with col2:
@@ -94,7 +112,6 @@ if guide_df is not None:
                     check_items = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
                     check_list = []
                     for i, name in enumerate(check_items):
-                        # 확인검사는 11번 열부터 시작
                         if is_checked(target_row.iloc[11 + i]):
                             check_list.append({"항목": name, "수행여부": "수행"})
                     
