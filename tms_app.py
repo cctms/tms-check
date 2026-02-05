@@ -43,9 +43,9 @@ def find_sheet_strict(sheets_dict, target_name):
         for s_name in sheets_dict.keys():
             s_num = re.findall(r'\d+', str(s_name))
             if s_num and t_num[0] == s_num[0]: return s_name
-    t_keyword = target_name.split('.')[-1].strip()
+    t_kw = target_name.split('.')[-1].strip()
     for s_name in sheets_dict.keys():
-        if t_keyword in str(s_name): return s_name
+        if t_kw in str(s_name): return s_name
     return None
 
 st.title("📋 수질 TMS 시험항목")
@@ -73,9 +73,39 @@ if df is not None:
                                 with st.expander(f"✅ {nm}"):
                                     t = r_s[m_n].fillna(""); st.dataframe(t)
                                     t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
-                            else: st.warning(f"⚠️ {nm} (시트 없음)")
+                            else: st.warning(f"⚠️ {nm} 없음")
 
                 with c2:
                     st.subheader("2. 확인검사")
                     c_l = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
-                    w_l = ["측정소 구조 및 설비", "시료채취조", "
+                    w_l = ["측정소 구조 및 설비", "시료채취조", "형식승인", "측정방법", "측정범위", "교정기능(표준물질)", "정도검사 교정일자"]
+                    for i, nm in enumerate(c_l):
+                        if ck(row.iloc[11+i]):
+                            if nm == "외관 및 구조":
+                                for wn in w_l:
+                                    m_n = find_sheet_strict(c_s, wn)
+                                    if m_n:
+                                        with st.expander(f"✅ {wn}"):
+                                            t = c_s[m_n].fillna(""); st.dataframe(t)
+                                            t_exp = t.copy(); t_exp.insert(0, '시험', wn); all_d.append(t_exp)
+                            else:
+                                m_n = find_sheet_strict(c_s, nm)
+                                if m_n:
+                                    with st.expander(f"✅ {nm}"):
+                                        t = c_s[m_n].fillna(""); st.dataframe(t)
+                                        t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
+                                else: st.info(f"✅ {nm} 시트 없음")
+
+                with c3:
+                    st.subheader("3. 상대정확도")
+                    if ck(row.iloc[22]) and s_s:
+                        k = list(s_s.keys())[0]
+                        with st.expander("✅ 상대정확도"):
+                            t = s_s[k].fillna(""); st.dataframe(t)
+                            t_exp = t.copy(); t_exp.insert(0, '시험', '상대정확도'); all_d.append(t_exp)
+
+                if all_d:
+                    out = BytesIO()
+                    with pd.ExcelWriter(out, engine='xlsxwriter') as wr:
+                        pd.concat(all_d).to_excel(wr, index=False)
+                    st.download_button("📥 결과 다운로드", out.getvalue(), "TMS_Report.xlsx")
