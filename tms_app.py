@@ -1,9 +1,3 @@
-카테고리를 일일이 클릭하는 방식 대신, 질문창(검색창)에 키워드를 입력하면 관련 개선내역을 찾아서 시험항목을 보여주는 방식으로 업그레이드해 보겠습니다.
-
-사용자가 입력한 단어가 포함된 모든 개선내역을 찾아주고, 그중 하나를 선택하면 기존처럼 상세 시험항목을 출력하는 구조입니다.
-
-🚀 검색 기능이 추가된 버전 (app.py)
-Python
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -40,27 +34,23 @@ def is_checked(value):
     return any(m in val_str for m in ['O', '○', '오', 'ㅇ', 'V'])
 
 if guide_df is not None:
-    # --- 🔍 검색 기능 추가 ---
+    # --- 🔍 검색 기능 ---
     st.markdown("### 🔍 개선내역 검색")
     search_query = st.text_input("찾으시는 개선내역의 키워드를 입력하세요 (예: 전송, 통신, 부착)", "")
 
-    # 검색어에 맞는 데이터 필터링
     if search_query:
-        # 2번 열(상세내역)에서 검색어 포함 여부 확인
+        # 상세내역 열에서 검색어 포함 여부 확인
         search_results = guide_df[guide_df.iloc[:, 2].str.contains(search_query, na=False, case=False)]
         
         if not search_results.empty:
-            # 검색된 항목들을 리스트로 보여주고 선택하게 함
             options = [f"[{row.iloc[1]}] {str(row.iloc[2]).strip()}" for _, row in search_results.iterrows()]
             selected_option = st.selectbox(f"검색 결과 ({len(options)}건):", ["선택하세요"] + options)
             
             if selected_option != "선택하세요":
-                # 선택된 항목의 실제 데이터 행 추출
                 idx = options.index(selected_option)
                 target_row = search_results.iloc[idx]
                 selected_sub = str(target_row.iloc[2]).replace('\n', ' ').strip()
                 
-                # --- 상세 항목 출력 로직 시작 ---
                 st.divider()
                 st.success(f"🎯 **분석 결과:** {selected_sub}")
                 
@@ -74,8 +64,7 @@ if guide_df is not None:
                 ]
 
                 st.markdown("### 📝 1. 통합시험 수행 항목")
-                cols = st.columns(2)
-                for i, (name, col_idx) in enumerate(test_items):
+                for name, col_idx in test_items:
                     if is_checked(target_row.iloc[col_idx]):
                         clean_name = name.replace(" ", "")
                         matched_name = next((val for key, val in sheet_map.items() if key == clean_name), None) or (name if name in report_sheets else None)
@@ -90,7 +79,7 @@ if guide_df is not None:
                                 temp_df.insert(1, '시험항목', matched_name)
                                 all_data_frames.append(temp_df)
 
-                # 2. 확인검사 및 상대정확도 처리
+                # 2. 확인검사 및 상대정확도
                 st.divider()
                 c1, c2 = st.columns(2)
                 
@@ -105,10 +94,11 @@ if guide_df is not None:
                     active_checks = pd.DataFrame(check_list)
                     st.table(active_checks[active_checks["수행여부"] == "수행"])
                     
-                    check_df_for_excel = active_checks.copy()
-                    check_df_for_excel.insert(0, '대분류', '확인검사')
-                    check_df_for_excel.rename(columns={'항목': '시험항목', '수행여부': '내용/결과'}, inplace=True)
-                    all_data_frames.append(check_df_for_excel)
+                    # 엑셀 저장용
+                    check_df_excel = active_checks[active_checks["수행여부"] == "수행"].copy()
+                    check_df_excel.insert(0, '대분류', '확인검사')
+                    check_df_excel.rename(columns={'항목': '시험항목', '수행여부': '내용/결과'}, inplace=True)
+                    all_data_frames.append(check_df_excel)
 
                 with c2:
                     st.markdown("### 📊 3. 상대정확도")
@@ -132,10 +122,10 @@ if guide_df is not None:
                     st.download_button(
                         label="📥 결과 엑셀 다운로드",
                         data=output.getvalue(),
-                        file_name=f"TMS_Search_{search_query}.xlsx",
+                        file_name=f"TMS_Search_Result.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
         else:
-            st.warning("검색 결과가 없습니다. 다른 키워드를 입력해 보세요.")
+            st.warning("검색 결과가 없습니다.")
     else:
-        st.info("검색창에 개선내역 키워드를 입력하시면 관련 항목을 찾아드립니다.")
+        st.info("검색창에 개선내역 키워드를 입력하세요.")
