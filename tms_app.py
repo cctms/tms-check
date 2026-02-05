@@ -37,29 +37,33 @@ if guide_df is not None:
     search_query = st.text_input("찾으시는 개선내역의 키워드를 입력하세요", "")
 
     if search_query:
-        search_results = guide_df[guide_df.iloc[:, 2].str.contains(search_query, na=False, case=False)]
+        # 검색어 필터링
+        search_results = guide_df[guide_df.iloc[:, 2].str.contains(search_query, na=False, case=False)].copy()
         
         if not search_results.empty:
-            # 검색 결과 리스트 생성
-            options = [f"[{row.iloc[1]}] {str(row.iloc[2]).strip()}" for _, row in search_results.iterrows()]
+            # 선택용 리스트 생성
+            search_results['display_name'] = search_results.apply(lambda x: f"[{x.iloc[1]}] {str(x.iloc[2]).strip()}", axis=1)
+            options = search_results['display_name'].tolist()
+            
+            # selectbox에서 선택
             selected_option = st.selectbox(f"검색 결과 ({len(options)}건):", ["선택하세요"] + options)
             
             if selected_option != "선택하세요":
-                # 선택된 항목의 인덱스로 실제 데이터 추출
-                idx = options.index(selected_option)
-                target_row = search_results.iloc[idx]
+                # 중요: 선택된 텍스트와 정확히 일치하는 행을 찾음
+                target_row = search_results[search_results['display_name'] == selected_option].iloc[0]
                 
-                # 키워드가 아닌, 선택된 '상세내역명'을 변수에 저장
+                # 분석 결과에 표시할 전체 이름
                 full_display_name = selected_option 
+                # 엑셀 파일용 짧은 이름 (상세내역만)
                 selected_sub = str(target_row.iloc[2]).replace('\n', ' ').strip()
                 
                 st.divider()
-                # 수정된 부분: 키워드가 아닌 선택된 전체 명칭을 출력
+                # 이제 잘림 없이 전체 문구 출력
                 st.subheader(f"🎯 분석 결과: {full_display_name}")
                 
                 all_data_frames = []
 
-                # --- 🎨 3단 레이아웃 설정 ---
+                # --- 🎨 3단 레이아웃 ---
                 col1, col2, col3 = st.columns([1.2, 1, 0.8])
 
                 # [1단: 통합시험]
@@ -75,7 +79,7 @@ if guide_df is not None:
                             clean_name = name.replace(" ", "")
                             matched_name = next((val for key, val in sheet_map.items() if key == clean_name), None) or (name if name in report_sheets else None)
                             if matched_name:
-                                with st.expander(f"✅ {matched_name}", expanded=False):
+                                with st.expander(f"✅ {matched_name}", expanded=True):
                                     df_content = report_sheets[matched_name].fillna("")
                                     st.dataframe(df_content, use_container_width=True)
                                     
@@ -90,17 +94,20 @@ if guide_df is not None:
                     check_items = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
                     check_list = []
                     for i, name in enumerate(check_items):
-                        status = "수행" if is_checked(target_row.iloc[11 + i]) else "미대상"
-                        check_list.append({"항목": name, "수행여부": status})
+                        # 확인검사는 11번 열부터 시작
+                        if is_checked(target_row.iloc[11 + i]):
+                            check_list.append({"항목": name, "수행여부": "수행"})
                     
-                    active_checks = pd.DataFrame(check_list)
-                    st.table(active_checks[active_checks["수행여부"] == "수행"])
-                    
-                    check_df_excel = active_checks[active_checks["수행여부"] == "수행"].copy()
-                    if not check_df_excel.empty:
+                    if check_list:
+                        active_checks = pd.DataFrame(check_list)
+                        st.table(active_checks)
+                        
+                        check_df_excel = active_checks.copy()
                         check_df_excel.insert(0, '대분류', '확인검사')
                         check_df_excel.rename(columns={'항목': '시험항목', '수행여부': '내용/결과'}, inplace=True)
                         all_data_frames.append(check_df_excel)
+                    else:
+                        st.write("대상 없음")
 
                 # [3단: 상대정확도]
                 with col3:
@@ -123,7 +130,6 @@ if guide_df is not None:
                         final_df.to_excel(writer, index=False, sheet_name='전체항목')
                     
                     st.download_button(
-                        # 파일 이름도 선택된 내역명으로 저장되도록 설정
                         label="📥 전체 결과 엑셀 다운로드",
                         data=output.getvalue(),
                         file_name=f"TMS_Report_{selected_sub}.xlsx",
