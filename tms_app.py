@@ -88,7 +88,7 @@ if guide_df is not None:
                     else:
                         st.info("📍 대상 아님")
 
-                # [2단: 확인검사]
+                # [2단: 확인검사 - 통합시험과 동일한 방식으로 적용됨]
                 with col2:
                     st.markdown("#### 🔍 2. 확인검사")
                     check_names = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
@@ -98,7 +98,7 @@ if guide_df is not None:
                         st.error("📍 수행 대상")
                         for i, name in enumerate(check_names):
                             if is_checked(target_row.iloc[11 + i]):
-                                # 확인검사 조사표 엑셀에 해당 시트가 있는지 확인
+                                # 엑셀 파일 내 시트 이름과 매칭 시도
                                 if name in check_sheets:
                                     with st.expander(f"✅ {name}", expanded=False):
                                         df = check_sheets[name].fillna("")
@@ -107,8 +107,8 @@ if guide_df is not None:
                                         df_exp.insert(0, '대분류', '확인검사'), df_exp.insert(1, '시험항목', name)
                                         all_data_frames.append(df_exp)
                                 else:
-                                    # 엑셀에 시트가 없더라도 항목 이름은 보여줌
-                                    st.write(f"✅ {name}")
+                                    # 엑셀에 시트가 없는 경우 텍스트만 표시
+                                    st.info(f"✅ {name} (조사표 시트 없음)")
                     else:
                         st.info("📍 대상 아님")
 
@@ -126,7 +126,7 @@ if guide_df is not None:
                                 df_exp.insert(0, '대분류', '상대정확도'), df_exp.insert(1, '시험항목', '상대정확도 시험')
                                 all_data_frames.append(df_exp)
                         else:
-                            st.write("✅ 상대정확도 시험")
+                            st.info("✅ 상대정확도 시험 (조사표 없음)")
                     else:
                         st.info("📍 대상 아님")
 
