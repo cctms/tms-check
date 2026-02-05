@@ -6,7 +6,7 @@ import os
 # 1. 페이지 설정
 st.set_page_config(page_title="수질 TMS 시험항목 도구", layout="wide")
 
-# 스타일 설정: 분석 결과 줄바꿈 방지
+# 스타일 설정
 st.markdown("""<style>.single-line-header { white-space: nowrap; overflow-x: auto; font-size: 1.6rem; font-weight: 700; padding: 10px 0px; color: #0E1117; border-bottom: 2px solid #F0F2F6; margin-bottom: 20px; }</style>""", unsafe_allow_html=True)
 
 st.title("📋 수질 TMS 개선내역별 시험항목")
@@ -56,6 +56,7 @@ if guide_df is not None:
                 all_data_frames = []
                 col1, col2, col3 = st.columns([1, 1, 1])
 
+                # [1. 통합시험] - 시트 이름과 매칭 로직 최적화
                 with col1:
                     st.markdown("#### 📝 1. 통합시험")
                     test_items = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5), ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8), ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
@@ -65,8 +66,13 @@ if guide_df is not None:
                         st.error("📍 수행 대상")
                         for name, col_idx in test_items:
                             if is_checked(target_row.iloc[col_idx]) or ("교체" in selected_sub and col_idx in [9, 10]):
-                                num_prefix = name.split('.')[0] + "."
-                                matched_name = next((s for s in report_sheets.keys() if s.strip().startswith(num_prefix)), None)
+                                # 사용자님이 수정한 시트 이름과 1:1 매칭 시도
+                                matched_name = next((s for s in report_sheets.keys() if s.strip() == name.strip()), None)
+                                # 만약 정확히 일치하지 않아도 숫자로 시작하면 매칭 (보조 로직)
+                                if not matched_name:
+                                    num_prefix = name.split('.')[0] + "."
+                                    matched_name = next((s for s in report_sheets.keys() if s.strip().startswith(num_prefix)), None)
+                                
                                 if matched_name:
                                     with st.expander(f"✅ {name}", expanded=False):
                                         df = report_sheets[matched_name].fillna(""); st.dataframe(df, use_container_width=True)
@@ -74,6 +80,7 @@ if guide_df is not None:
                                 else: st.warning(f"⚠️ {name} (조사표 시트 미연결)")
                     else: st.info("📍 대상 아님")
 
+                # [2. 확인검사]
                 with col2:
                     st.markdown("#### 🔍 2. 확인검사")
                     check_base_names = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
@@ -96,6 +103,7 @@ if guide_df is not None:
                                 else: st.write(f"✅ {name}")
                     else: st.info("📍 대상 아님")
 
+                # [3. 상대정확도]
                 with col3:
                     st.markdown("#### 📊 3. 상대정확도")
                     if is_checked(target_row.iloc[22]):
