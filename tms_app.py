@@ -6,19 +6,21 @@ from io import BytesIO
 # 페이지 설정
 st.set_page_config(page_title="수질 TMS 스마트 가이드", layout="wide")
 
-# 디자인 CSS: 제목 크기를 기존 3.0rem에서 6.0rem으로 2배 확대
+# 디자인 CSS: !important를 추가하여 스타일을 강제로 덮어씁니다.
 st.markdown("""
     <style>
-    .main-title { 
-        font-size: 6.0rem; 
-        font-weight: 900; 
-        color: #1E3A8A; 
-        text-align: center; 
-        margin-top: 2rem;
-        margin-bottom: 4rem; 
-        line-height: 1.2;
-        text-shadow: 2px 2px 4px #d1d1d1;
+    /* 제목 스타일 - 크기를 기존보다 2배 이상 키움 */
+    .super-title { 
+        font-size: 80px !important;  /* 절대적인 픽셀 값으로 고정 */
+        font-weight: 900 !important; 
+        color: #1E3A8A !important; 
+        text-align: center !important; 
+        margin-top: 50px !important;
+        margin-bottom: 70px !important; 
+        line-height: 1.2 !important;
+        display: block !important;
     }
+    
     .section-header { 
         background: #1E3A8A; 
         color: white; 
@@ -26,13 +28,8 @@ st.markdown("""
         border-radius: 8px; 
         text-align: center; 
         font-weight: 700; 
-        font-size: 1.5rem;
+        font-size: 24px;
         margin-bottom: 15px; 
-    }
-    /* 검색창 라벨 크기도 살짝 키움 */
-    .stTextInput label {
-        font-size: 1.2rem !important;
-        font-weight: 600 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -75,13 +72,13 @@ def is_ok(val):
     s = str(val).replace(" ", "").upper()
     return any(m in s for m in ['O', 'ㅇ', '○', 'V', '◎', '대상'])
 
-# 제목 출력
-st.markdown('<p class="main-title">수질TMS 개선내역에 따른 통합 조사표</p>', unsafe_allow_html=True)
+# 제목 출력 - 클래스명을 super-title로 변경하여 적용 시도
+st.markdown('<div class="super-title">수질TMS 개선내역에 따른 통합 조사표</div>', unsafe_allow_html=True)
 
 if df is not None:
     c_left, c_mid, c_right = st.columns([1, 2, 1])
     with c_mid:
-        search_q = st.text_input("🔍 개선내역 키워드를 입력하세요", placeholder="예: 측정기기 교체")
+        search_q = st.text_input("🔍 개선내역 키워드 입력", placeholder="예: 측정기기 교체")
     
     if search_q:
         matches = df[df.iloc[:, 2].astype(str).str.contains(search_q, na=False)]
