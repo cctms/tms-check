@@ -1,63 +1,116 @@
+import streamlit as st
 import pandas as pd
-import io
+from io import BytesIO
+import os
 
-def generate_inspection_excel(user_input):
-    # 1. 파일 로드 (제공된 CSV 파일 기준)
+# 1. 페이지 설정
+st.set_page_config(page_title="수질 TMS 시험항목 도구", layout="wide")
+
+# 스타일 설정: 분석 결과 줄바꿈 방지
+st.markdown("""<style>.single-line-header { white-space: nowrap; overflow-x: auto; font-size: 1.6rem; font-weight: 700; padding: 10px 0px; color: #0E1117; border-bottom: 2px solid #F0F2F6; margin-bottom: 20px; }</style>""", unsafe_allow_html=True)
+
+st.title("📋 수질 TMS 개선내역별 시험항목")
+
+# 2. 데이터 로드 함수
+@st.cache_data
+def load_all_data():
     try:
-        df_guide = pd.read_csv('개선내역에 따른 시험방법(2025 최종).xlsx - ★최종(가이드북).csv', skiprows=1)
-    except FileNotFoundError:
-        return "가이드북 파일을 찾을 수 없습니다."
+        files = os.listdir('.')
+        guide_path = next((f for f in files if '가이드북' in f or '시험방법' in f), None)
+        report_path = next((f for f in files if '1.통합시험' in f), None)
+        check_path = next((f for f in files if '2.확인검사' in f), None)
+        rel_path = next((f for f in files if '상대정확도' in f or '3.상대정확도' in f), None)
+        if not guide_path: return None, None, None, None
+        guide_df = pd.read_excel(guide_path, sheet_name='★최종(가이드북)', skiprows=1)
+        guide_df.iloc[:, 1] = guide_df.iloc[:, 1].ffill()
+        report_sheets = pd.read_excel(report_path, sheet_name=None) if report_path else {}
+        check_sheets = pd.read_excel(check_path, sheet_name=None) if check_path else {}
+        rel_sheets = pd.read_excel(rel_path, sheet_name=None) if rel_path else {}
+        return guide_df, report_sheets, check_sheets, rel_sheets
+    except: return None, None, None, None
 
-    # 2. 개선 내역 검색
-    match = df_guide[df_guide['개선 내역'].str.contains(user_input, na=False, case=False)]
-    if match.empty:
-        return f"'{user_input}'에 해당하는 개선 내역을 찾을 수 없습니다."
+guide_df, report_sheets, check_sheets, rel_sheets = load_all_data()
 
-    # 3. 필요한 시험 항목 번호 추출 (1.일반현황 ~ 8.관제센터)
-    test_columns = [
-        '1. 일반현황', '2. 하드웨어 규격', '3. 소프트웨어 \n기능 규격', 
-        '4. 자료정의', '5. 측정기기 \n점검사항', '6. 자료생성', 
-        '7. 측정기기-자료수집기', '8. 자료수집기-관제센터'
-    ]
-    
-    selected_row = match.iloc[0]
-    required_tests = [col.split('.')[0].strip() for col in test_columns if str(selected_row[col]).startswith('O')]
+def is_checked(value):
+    if pd.isna(value): return False
+    val_str = str(value).replace(" ", "").upper()
+    return any(m in val_str for m in ['O', '○', '오', 'ㅇ', 'V', 'CHECK'])
 
-    # 4. 각 시험별 상세 조사표 데이터 매핑 (조사표 파일 분석 내용 반영)
-    # 실제 환경에서는 각 번호별 CSV/Excel 파일을 로드하도록 구현합니다.
-    test_details = {
-        "1": "1.1 장비 설치현황(S/N 확인), 1.2 VPN 장비 정보 일치 여부",
-        "2": "2.1 직렬포트 할당(기기당 1개), 2.2 자료보안 안정성(외부변조 방지)",
-        "3": "3.1 수집기능, 3.2 저장기능(30일 이상), 3.5 비밀번호 설정 기능",
-        "4": "4.1 5분자료 생성 방식, 4.2 시간자료 산출 적정성",
-        "5": "5.1 측정상수(Factor/Offset) 전송, 5.3 로그기록 저장, 5.4 비밀번호 설정",
-        "6": "6.1 상태정보 코드 구성, 6.2 상태정보 우선순위 준수 여부",
-        "7": "7.1 실시간 자료전송 전문 형식, 7.3 오류처리(3회 재시도 및 시간초과)",
-        "8": "8.1 인증된 IP 접속 응답, 8.2 전송범위 제한(2시간), 8.7 시간변경 처리"
-    }
+if guide_df is not None:
+    st.markdown("### 🔍 개선내역 검색")
+    search_query = st.text_input("키워드를 입력하세요 (예: 기기교체)", "")
 
-    # 5. 결과 데이터프레임 구성
-    result_data = []
-    for test_no in required_tests:
-        result_data.append({
-            "개선내역": selected_row['개선 내역'],
-            "시험구분": f"{test_no}번 시험",
-            "상세 점검 항목": test_details.get(test_no, "상세 가이드북 참조"),
-            "비고": selected_row.get('참 고', '-')
-        })
+    if search_query:
+        search_results = guide_df[guide_df.iloc[:, 2].str.contains(search_query, na=False, case=False)].copy()
+        if not search_results.empty:
+            search_results['display_name'] = search_results.apply(lambda x: f"[{x.iloc[1]}] {str(x.iloc[2]).strip()}", axis=1)
+            options = search_results['display_name'].tolist()
+            selected_option = st.selectbox(f"검색 결과 ({len(options)}건):", ["선택하세요"] + options)
+            
+            if selected_option != "선택하세요":
+                target_row = search_results[search_results['display_name'] == selected_option].iloc[0]
+                selected_sub = str(target_row.iloc[2]).replace('\n', ' ').strip()
+                st.divider()
+                st.markdown(f'<div class="single-line-header">🎯 분석 결과: {selected_option}</div>', unsafe_allow_html=True)
+                
+                all_data_frames = []
+                col1, col2, col3 = st.columns([1, 1, 1])
 
-    df_result = pd.DataFrame(result_data)
+                with col1:
+                    st.markdown("#### 📝 1. 통합시험")
+                    test_items = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5), ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8), ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
+                    found_any_test = any(is_checked(target_row.iloc[idx]) for _, idx in test_items)
+                    if "교체" in selected_sub: found_any_test = True
+                    if found_any_test:
+                        st.error("📍 수행 대상")
+                        for name, col_idx in test_items:
+                            if is_checked(target_row.iloc[col_idx]) or ("교체" in selected_sub and col_idx in [9, 10]):
+                                num_prefix = name.split('.')[0] + "."
+                                matched_name = next((s for s in report_sheets.keys() if s.strip().startswith(num_prefix)), None)
+                                if matched_name:
+                                    with st.expander(f"✅ {name}", expanded=False):
+                                        df = report_sheets[matched_name].fillna(""); st.dataframe(df, use_container_width=True)
+                                        df_exp = df.copy(); df_exp.insert(0, '대분류', '통합시험'); df_exp.insert(1, '시험항목', name); all_data_frames.append(df_exp)
+                                else: st.warning(f"⚠️ {name} (조사표 시트 미연결)")
+                    else: st.info("📍 대상 아님")
 
-    # 6. 엑셀 파일로 내보내기
-    output_filename = f"조사표_{user_input.replace(' ', '_')}.xlsx"
-    df_result.to_excel(output_filename, index=False)
-    
-    print(f"✅ '{output_filename}' 파일이 성공적으로 생성되었습니다.")
-    return df_result
+                with col2:
+                    st.markdown("#### 🔍 2. 확인검사")
+                    check_base_names = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
+                    water_structure_sheets = ["측정소 구조 및 설비", "시료채취조", "형식승인", "측정방법", "측정범위", "교정기능(표준물질)", "정도검사 교정일자"]
+                    found_check = any(is_checked(target_row.iloc[11 + i]) for i in range(len(check_base_names)))
+                    if found_check:
+                        st.error("📍 수행 대상")
+                        for i, name in enumerate(check_base_names):
+                            if is_checked(target_row.iloc[11 + i]):
+                                if name == "외관 및 구조":
+                                    for s_name in water_structure_sheets:
+                                        if s_name in check_sheets:
+                                            with st.expander(f"✅ {s_name}", expanded=False):
+                                                df = check_sheets[s_name].fillna(""); st.dataframe(df, use_container_width=True)
+                                                df_exp = df.copy(); df_exp.insert(0, '대분류', '확인검사'); df_exp.insert(1, '시험항목', s_name); all_data_frames.append(df_exp)
+                                elif name in check_sheets:
+                                    with st.expander(f"✅ {name}", expanded=False):
+                                        df = check_sheets[name].fillna(""); st.dataframe(df, use_container_width=True)
+                                        df_exp = df.copy(); df_exp.insert(0, '대분류', '확인검사'); df_exp.insert(1, '시험항목', name); all_data_frames.append(df_exp)
+                                else: st.write(f"✅ {name}")
+                    else: st.info("📍 대상 아님")
 
-# 사용 예시
-user_query = input("개선 내용을 입력하세요 (예: 측정기기 교체): ")
-result = generate_inspection_excel(user_query)
-if isinstance(result, pd.DataFrame):
-    print("\n[생성된 조사표 요약]")
-    print(result[['시험구분', '상세 점검 항목']])
+                with col3:
+                    st.markdown("#### 📊 3. 상대정확도")
+                    if is_checked(target_row.iloc[22]):
+                        st.error("📍 수행 대상")
+                        if rel_sheets:
+                            rel_s_name = next((s for s in rel_sheets.keys() if '상대정확도' in s), list(rel_sheets.keys())[0])
+                            with st.expander(f"✅ 상대정확도 결과서", expanded=False):
+                                df = rel_sheets[rel_s_name].fillna(""); st.dataframe(df, use_container_width=True)
+                                df_exp = df.copy(); df_exp.insert(0, '대분류', '상대정확도'); df_exp.insert(1, '시험항목', '상대정확도'); all_data_frames.append(df_exp)
+                        else: st.info("✅ 상대정확도 (조사표 없음)")
+                    else: st.info("📍 대상 아님")
+
+                if all_data_frames:
+                    st.divider()
+                    final_df = pd.concat(all_data_frames, ignore_index=True)
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer: final_df.to_excel(writer, index=False, sheet_name='수행항목리스트')
+                    st.download_button(label="📥 전체 결과 엑셀 다운로드", data=output.getvalue(), file_name=f"TMS_Report_{selected_sub}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
