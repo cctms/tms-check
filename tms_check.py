@@ -44,8 +44,8 @@ if guide_df is not None:
         search_results = guide_df[guide_df.iloc[:, 2].str.contains(search_query, na=False, case=False)].copy()
         if not search_results.empty:
             search_results['display_name'] = search_results.apply(lambda x: f"[{x.iloc[1]}] {str(x.iloc[2]).strip()}", axis=1)
-            options = search_results['display_name'].tolist()
-            selected_option = st.selectbox(f"검색 결과 ({len(options)}건):", ["선택하세요"] + options)
+            options = ["선택하세요"] + search_results['display_name'].tolist()
+            selected_option = st.selectbox(f"검색 결과 ({len(options)-1}건):", options)
             
             if selected_option != "선택하세요":
                 target_row = search_results[search_results['display_name'] == selected_option].iloc[0]
@@ -56,35 +56,49 @@ if guide_df is not None:
                 all_data_frames = []
                 col1, col2, col3 = st.columns([1, 1, 1])
 
-                # [1. 통합시험] - 시트 이름과 매칭 로직 최적화
+                # [1. 통합시험]
                 with col1:
                     st.markdown("#### 📝 1. 통합시험")
-                    test_items = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5), ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8), ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
+                    test_items = [
+                        ("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
+                        ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
+                        ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)
+                    ]
                     found_any_test = any(is_checked(target_row.iloc[idx]) for _, idx in test_items)
                     if "교체" in selected_sub: found_any_test = True
+                    
                     if found_any_test:
                         st.error("📍 수행 대상")
                         for name, col_idx in test_items:
                             if is_checked(target_row.iloc[col_idx]) or ("교체" in selected_sub and col_idx in [9, 10]):
-                                # 사용자님이 수정한 시트 이름과 1:1 매칭 시도
                                 matched_name = next((s for s in report_sheets.keys() if s.strip() == name.strip()), None)
-                                # 만약 정확히 일치하지 않아도 숫자로 시작하면 매칭 (보조 로직)
                                 if not matched_name:
-                                    num_prefix = name.split('.')[0] + "."
-                                    matched_name = next((s for s in report_sheets.keys() if s.strip().startswith(num_prefix)), None)
+                                    prefix = name.split('.')[0] + "."
+                                    matched_name = next((s for s in report_sheets.keys() if s.strip().startswith(prefix)), None)
                                 
                                 if matched_name:
                                     with st.expander(f"✅ {name}", expanded=False):
-                                        df = report_sheets[matched_name].fillna(""); st.dataframe(df, use_container_width=True)
-                                        df_exp = df.copy(); df_exp.insert(0, '대분류', '통합시험'); df_exp.insert(1, '시험항목', name); all_data_frames.append(df_exp)
+                                        df = report_sheets[matched_name].fillna("")
+                                        st.dataframe(df, use_container_width=True)
+                                        df_exp = df.copy()
+                                        df_exp.insert(0, '대분류', '통합시험')
+                                        df_exp.insert(1, '시험항목', name)
+                                        all_data_frames.append(df_exp)
                                 else: st.warning(f"⚠️ {name} (조사표 시트 미연결)")
                     else: st.info("📍 대상 아님")
 
                 # [2. 확인검사]
                 with col2:
                     st.markdown("#### 🔍 2. 확인검사")
-                    check_base_names = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
-                    water_structure_sheets = ["측정소 구조 및 설비", "시료채취조", "형식승인", "측정방법", "측정범위", "교정기능(표준물질)", "정도검사 교정일자"]
+                    check_base_names = [
+                        "외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", 
+                        "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", 
+                        "유입전류 안정성", "간섭영향", "검출한계"
+                    ]
+                    water_structure_sheets = [
+                        "측정소 구조 및 설비", "시료채취조", "형식승인", "측정방법", 
+                        "측정범위", "교정기능(표준물질)", "정도검사 교정일자"
+                    ]
                     found_check = any(is_checked(target_row.iloc[11 + i]) for i in range(len(check_base_names)))
                     if found_check:
                         st.error("📍 수행 대상")
@@ -94,11 +108,13 @@ if guide_df is not None:
                                     for s_name in water_structure_sheets:
                                         if s_name in check_sheets:
                                             with st.expander(f"✅ {s_name}", expanded=False):
-                                                df = check_sheets[s_name].fillna(""); st.dataframe(df, use_container_width=True)
+                                                df = check_sheets[s_name].fillna("")
+                                                st.dataframe(df, use_container_width=True)
                                                 df_exp = df.copy(); df_exp.insert(0, '대분류', '확인검사'); df_exp.insert(1, '시험항목', s_name); all_data_frames.append(df_exp)
                                 elif name in check_sheets:
                                     with st.expander(f"✅ {name}", expanded=False):
-                                        df = check_sheets[name].fillna(""); st.dataframe(df, use_container_width=True)
+                                        df = check_sheets[name].fillna("")
+                                        st.dataframe(df, use_container_width=True)
                                         df_exp = df.copy(); df_exp.insert(0, '대분류', '확인검사'); df_exp.insert(1, '시험항목', name); all_data_frames.append(df_exp)
                                 else: st.write(f"✅ {name}")
                     else: st.info("📍 대상 아님")
@@ -111,7 +127,8 @@ if guide_df is not None:
                         if rel_sheets:
                             rel_s_name = next((s for s in rel_sheets.keys() if '상대정확도' in s), list(rel_sheets.keys())[0])
                             with st.expander(f"✅ 상대정확도 결과서", expanded=False):
-                                df = rel_sheets[rel_s_name].fillna(""); st.dataframe(df, use_container_width=True)
+                                df = rel_sheets[rel_s_name].fillna("")
+                                st.dataframe(df, use_container_width=True)
                                 df_exp = df.copy(); df_exp.insert(0, '대분류', '상대정확도'); df_exp.insert(1, '시험항목', '상대정확도'); all_data_frames.append(df_exp)
                         else: st.info("✅ 상대정확도 (조사표 없음)")
                     else: st.info("📍 대상 아님")
@@ -120,5 +137,6 @@ if guide_df is not None:
                     st.divider()
                     final_df = pd.concat(all_data_frames, ignore_index=True)
                     output = BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer: final_df.to_excel(writer, index=False, sheet_name='수행항목리스트')
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        final_df.to_excel(writer, index=False, sheet_name='수행항목리스트')
                     st.download_button(label="📥 전체 결과 엑셀 다운로드", data=output.getvalue(), file_name=f"TMS_Report_{selected_sub}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
