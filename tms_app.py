@@ -8,27 +8,22 @@ st.set_page_config(page_title="TMS 시험항목 도구", layout="wide")
 
 st.title("📋 TMS 개선내역별 시험항목")
 
-# 2. 데이터 로드 함수 (파일명을 단어로 찾아 에러 방지)
+# 2. 데이터 로드 함수 (파일 유연하게 찾기)
 @st.cache_data
 def load_all_data():
     try:
-        # 폴더 내 파일 목록 확인
         files = os.listdir('.')
-        
-        # 파일 키워드로 경로 자동 매칭
         guide_path = next((f for f in files if '가이드북' in f), '개선내역에 따른 시험방법(2025 최종).xlsx')
         report_path = next((f for f in files if '1.통합시험' in f), '1.통합시험 조사표.xlsx')
         check_path = next((f for f in files if '2.확인검사' in f), '2.확인검사 조사표.xlsx')
         rel_path = next((f for f in files if '상대정확도' in f), '3.상대정확도 결과서.xlsx')
         
-        # 엑셀 데이터 읽기
         guide_df = pd.read_excel(guide_path, sheet_name='★최종(가이드북)', skiprows=1)
         guide_df.iloc[:, 1] = guide_df.iloc[:, 1].ffill()
         
         report_sheets = pd.read_excel(report_path, sheet_name=None)
         sheet_map = {name.replace(" ", ""): name for name in report_sheets.keys()}
         
-        # 확인검사/상대정확도 파일 로드 (예외 처리 포함)
         check_sheets = pd.read_excel(check_path, sheet_name=None) if os.path.exists(check_path) else {}
         rel_sheets = pd.read_excel(rel_path, sheet_name=None) if os.path.exists(rel_path) else {}
         
@@ -45,7 +40,6 @@ def is_checked(value):
     return any(m in val_str for m in ['O', '○', '오', 'ㅇ', 'V'])
 
 if guide_df is not None:
-    # --- 🔍 검색 기능 ---
     st.markdown("### 🔍 개선내역 검색")
     search_query = st.text_input("찾으시는 개선내역의 키워드를 입력하세요", "")
 
@@ -63,16 +57,11 @@ if guide_df is not None:
                 selected_sub = str(target_row.iloc[2]).replace('\n', ' ').strip()
                 
                 st.divider()
-                
-                # --- 🎯 분석 결과 제목 (줄바꿈 방지) ---
-                st.markdown(f"""
-                    <div style="white-space: nowrap; overflow-x: auto; font-size: 1.6rem; font-weight: 700; 
+                st.markdown(f"""<div style="white-space: nowrap; overflow-x: auto; font-size: 1.6rem; font-weight: 700; 
                     padding: 10px 0px; color: #0E1117; border-bottom: 2px solid #F0F2F6; margin-bottom: 20px;">
-                        🎯 분석 결과: {full_display_name}
-                    </div>""", unsafe_allow_html=True)
+                    🎯 분석 결과: {full_display_name}</div>""", unsafe_allow_html=True)
                 
                 all_data_frames = []
-                # 3단 배치 (너비 1:1:1)
                 col1, col2, col3 = st.columns([1, 1, 1])
 
                 # [1단: 통합시험]
@@ -81,41 +70,47 @@ if guide_df is not None:
                     test_items = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
                                   ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
                                   ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
-                    found_test = False
-                    for name, col_idx in test_items:
-                        if is_checked(target_row.iloc[col_idx]):
-                            found_test = True
-                            clean_name = name.replace(" ", "")
-                            matched_name = next((val for key, val in sheet_map.items() if key == clean_name), None)
-                            if matched_name and matched_name in report_sheets:
-                                with st.expander(f"✅ {matched_name}", expanded=True):
-                                    df = report_sheets[matched_name].fillna("")
-                                    st.dataframe(df, use_container_width=True)
-                                    df_exp = df.copy()
-                                    df_exp.insert(0, '대분류', '통합시험')
-                                    df_exp.insert(1, '시험항목', matched_name)
-                                    all_data_frames.append(df_exp)
-                    if not found_test: st.info("📍 대상 아님")
+                    
+                    found_test = any(is_checked(target_row.iloc[col_idx]) for _, col_idx in test_items)
+                    
+                    if found_test:
+                        st.error("📍 수행 대상")  # 강조 메시지 추가
+                        for name, col_idx in test_items:
+                            if is_checked(target_row.iloc[col_idx]):
+                                clean_name = name.replace(" ", "")
+                                matched_name = next((val for key, val in sheet_map.items() if key == clean_name), None)
+                                if matched_name and matched_name in report_sheets:
+                                    with st.expander(f"✅ {matched_name}", expanded=False):
+                                        df = report_sheets[matched_name].fillna("")
+                                        st.dataframe(df, use_container_width=True)
+                                        df_exp = df.copy()
+                                        df_exp.insert(0, '대분류', '통합시험'), df_exp.insert(1, '시험항목', matched_name)
+                                        all_data_frames.append(df_exp)
+                    else:
+                        st.info("📍 대상 아님")
 
                 # [2단: 확인검사]
                 with col2:
                     st.markdown("#### 🔍 2. 확인검사")
                     check_names = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
-                    found_check = False
-                    for i, name in enumerate(check_names):
-                        if is_checked(target_row.iloc[11 + i]):
-                            found_check = True
-                            if name in check_sheets:
-                                with st.expander(f"✅ {name}", expanded=True):
-                                    df = check_sheets[name].fillna("")
-                                    st.dataframe(df, use_container_width=True)
-                                    df_exp = df.copy()
-                                    df_exp.insert(0, '대분류', '확인검사')
-                                    df_exp.insert(1, '시험항목', name)
-                                    all_data_frames.append(df_exp)
-                            else:
-                                st.write(f"✅ {name} (수행)")
-                    if not found_check: st.info("📍 대상 아님")
+                    
+                    found_check = any(is_checked(target_row.iloc[11 + i]) for i, _ in enumerate(check_names))
+                    
+                    if found_check:
+                        st.error("📍 수행 대상")  # 강조 메시지 추가
+                        for i, name in enumerate(check_names):
+                            if is_checked(target_row.iloc[11 + i]):
+                                if name in check_sheets:
+                                    with st.expander(f"✅ {name}", expanded=False):
+                                        df = check_sheets[name].fillna("")
+                                        st.dataframe(df, use_container_width=True)
+                                        df_exp = df.copy()
+                                        df_exp.insert(0, '대분류', '확인검사'), df_exp.insert(1, '시험항목', name)
+                                        all_data_frames.append(df_exp)
+                                else:
+                                    st.write(f"✅ {name} (수행)")
+                    else:
+                        st.info("📍 대상 아님")
 
                 # [3단: 상대정확도]
                 with col3:
@@ -124,12 +119,11 @@ if guide_df is not None:
                         st.error("📍 수행 대상")
                         if rel_sheets:
                             rel_sheet_name = list(rel_sheets.keys())[0]
-                            with st.expander("📝 결과서 미리보기", expanded=True):
+                            with st.expander("📝 결과서 미리보기", expanded=False):
                                 df = rel_sheets[rel_sheet_name].fillna("")
                                 st.dataframe(df, use_container_width=True)
                                 df_exp = df.copy()
-                                df_exp.insert(0, '대분류', '상대정확도')
-                                df_exp.insert(1, '시험항목', '상대정확도 시험')
+                                df_exp.insert(0, '대분류', '상대정확도'), df_exp.insert(1, '시험항목', '상대정확도 시험')
                                 all_data_frames.append(df_exp)
                     else:
                         st.info("📍 대상 아님")
@@ -144,7 +138,3 @@ if guide_df is not None:
                     st.download_button(label="📥 전체 결과 엑셀 다운로드", data=output.getvalue(),
                                        file_name=f"TMS_Report_{selected_sub}.xlsx",
                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        else:
-            st.warning("검색 결과가 없습니다.")
-    else:
-        st.info("검색창에 개선내역 키워드를 입력하세요.")
