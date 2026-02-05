@@ -8,7 +8,7 @@ st.set_page_config(page_title="TMS 시험항목 도구", layout="wide")
 
 st.title("📋 TMS 개선내역별 시험항목")
 
-# 2. 데이터 로드 함수 (파일 유연하게 찾기)
+# 2. 데이터 로드 함수
 @st.cache_data
 def load_all_data():
     try:
@@ -72,9 +72,8 @@ if guide_df is not None:
                                   ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
                     
                     found_test = any(is_checked(target_row.iloc[col_idx]) for _, col_idx in test_items)
-                    
                     if found_test:
-                        st.error("📍 수행 대상")  # 강조 메시지 추가
+                        st.error("📍 수행 대상")
                         for name, col_idx in test_items:
                             if is_checked(target_row.iloc[col_idx]):
                                 clean_name = name.replace(" ", "")
@@ -95,11 +94,11 @@ if guide_df is not None:
                     check_names = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
                     
                     found_check = any(is_checked(target_row.iloc[11 + i]) for i, _ in enumerate(check_names))
-                    
                     if found_check:
-                        st.error("📍 수행 대상")  # 강조 메시지 추가
+                        st.error("📍 수행 대상")
                         for i, name in enumerate(check_names):
                             if is_checked(target_row.iloc[11 + i]):
+                                # 확인검사 조사표 엑셀에 해당 시트가 있는지 확인
                                 if name in check_sheets:
                                     with st.expander(f"✅ {name}", expanded=False):
                                         df = check_sheets[name].fillna("")
@@ -108,7 +107,8 @@ if guide_df is not None:
                                         df_exp.insert(0, '대분류', '확인검사'), df_exp.insert(1, '시험항목', name)
                                         all_data_frames.append(df_exp)
                                 else:
-                                    st.write(f"✅ {name} (수행)")
+                                    # 엑셀에 시트가 없더라도 항목 이름은 보여줌
+                                    st.write(f"✅ {name}")
                     else:
                         st.info("📍 대상 아님")
 
@@ -119,12 +119,14 @@ if guide_df is not None:
                         st.error("📍 수행 대상")
                         if rel_sheets:
                             rel_sheet_name = list(rel_sheets.keys())[0]
-                            with st.expander("📝 결과서 미리보기", expanded=False):
+                            with st.expander(f"✅ 상대정확도 시험", expanded=False):
                                 df = rel_sheets[rel_sheet_name].fillna("")
                                 st.dataframe(df, use_container_width=True)
                                 df_exp = df.copy()
                                 df_exp.insert(0, '대분류', '상대정확도'), df_exp.insert(1, '시험항목', '상대정확도 시험')
                                 all_data_frames.append(df_exp)
+                        else:
+                            st.write("✅ 상대정확도 시험")
                     else:
                         st.info("📍 대상 아님")
 
