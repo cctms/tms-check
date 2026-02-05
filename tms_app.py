@@ -21,7 +21,10 @@ def load_all_resources():
         g_p = next((f for f in f_list if '가이드북' in f or '시험방법' in f), None)
         r_p = next((f for f in f_list if '1.통합' in f), None)
         c_p = next((f for f in f_list if '2.확인' in f), None)
-        s_p = next((f for f in f_list if '상대' in f or '3.' in f), None)
+        # 상대정확도시험 확인서 파일 찾기
+        s_p = next((f for f in f_list if '상대정확도' in f and '확인서' in f), None) 
+        if not s_p: # 파일명이 다를 경우를 대비한 보조 검색
+            s_p = next((f for f in f_list if '3.' in f or '상대정확도' in f), None)
         
         if not g_p: return None, None, None, None
         
@@ -40,6 +43,7 @@ def load_all_resources():
         
         r_data = pd.read_excel(r_p, sheet_name=None) if r_p else {}
         c_data = pd.read_excel(c_p, sheet_name=None) if c_p else {}
+        # 상대정확도시험 확인서 데이터 로드
         s_data = pd.read_excel(s_p, sheet_name=None) if s_p else {}
         
         return data_df, top_h, sub_h, {"통합시험": r_data, "확인검사": c_data, "상대정확도": s_data}
@@ -68,8 +72,6 @@ if df is not None:
             
             if sel != "선택하세요":
                 target_row = matches[matches['dp'] == sel].iloc[0]
-                
-                # 시트별로 데이터를 모을 딕셔너리
                 combined_sheets = {"통합시험": [], "확인검사": [], "상대정확도": []}
                 
                 st.write("---")
@@ -81,8 +83,6 @@ if df is not None:
                 for i in range(3, len(df.columns)):
                     if is_ok(target_row[i]):
                         cat, name = str(top_h[i]), str(sub_h[i])
-                        
-                        # 대분류 매칭
                         main_cat = "통합시험" if "통합" in cat else "확인검사" if "확인" in cat else "상대정확도" if "상대" in cat else None
                         if not main_cat: continue
                         
@@ -91,22 +91,24 @@ if df is not None:
                         with target_col:
                             with st.expander(f"✅ {name}"):
                                 sheets = survey_data.get(main_cat, {})
+                                found = False
                                 for s_name, s_df in sheets.items():
+                                    # 상대정확도의 경우 '확인서' 관련 시트를 우선 매칭
                                     if s_name.replace(" ","") in name.replace(" ","") or name.replace(" ","") in s_name.replace(" ",""):
                                         st.dataframe(s_df.fillna(""), use_container_width=True)
-                                        # 엑셀 저장을 위해 리스트에 추가 (시험명 헤더 추가)
-                                        header_df = pd.DataFrame([[f"■ {name}"]], columns=[s_df.columns[0]])
+                                        header_df = pd.DataFrame([[f"■ {name}"]], columns=[s_df.columns[0] if not s_df.empty else "항목"])
                                         combined_sheets[main_cat].append(header_df)
                                         combined_sheets[main_cat].append(s_df)
-                                        combined_sheets[main_cat].append(pd.DataFrame([[""]])) # 한 줄 띄우기
+                                        combined_sheets[main_cat].append(pd.DataFrame([[""]]))
+                                        found = True
                                         break
+                                if not found: st.info("데이터 없음")
 
                 # --- 통합 엑셀 파일 생성 ---
                 output_xlsx = BytesIO()
                 with pd.ExcelWriter(output_xlsx, engine='xlsxwriter') as writer:
                     for sheet_name, df_list in combined_sheets.items():
                         if df_list:
-                            # 리스트에 담긴 데이터프레임들을 하나로 합침
                             final_df = pd.concat(df_list, ignore_index=True)
                             final_df.to_excel(writer, sheet_name=sheet_name, index=False)
                 
