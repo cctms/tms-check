@@ -36,16 +36,13 @@ def ck(v):
 def find_sheet_strict(sheets_dict, target_name):
     if not sheets_dict: return None
     t_clean = target_name.replace(" ", "")
-    # 1. 완전 일치 (공백무시)
     for s_name in sheets_dict.keys():
         if str(s_name).replace(" ", "") == t_clean: return s_name
-    # 2. 숫자 매칭
     t_num = re.findall(r'\d+', target_name)
     if t_num:
         for s_name in sheets_dict.keys():
             s_num = re.findall(r'\d+', str(s_name))
             if s_num and t_num[0] == s_num[0]: return s_name
-    # 3. 키워드 매칭
     t_keyword = target_name.split('.')[-1].strip()
     for s_name in sheets_dict.keys():
         if t_keyword in str(s_name): return s_name
@@ -62,4 +59,23 @@ if df is not None:
             sel = st.selectbox("항목선택", ["선택"] + res['dn'].tolist())
             if sel != "선택":
                 row = res[res['dn'] == sel].iloc[0]
-                is_
+                is_c = "교체" in str(row.iloc[2])
+                all_d = []
+                c1, c2, c3 = st.columns(3)
+
+                with c1:
+                    st.subheader("1. 통합시험")
+                    t_l = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5), ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8), ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
+                    for nm, idx in t_l:
+                        if ck(row.iloc[idx]) or (is_c and idx in [9, 10]):
+                            m_n = find_sheet_strict(r_s, nm)
+                            if m_n:
+                                with st.expander(f"✅ {nm}"):
+                                    t = r_s[m_n].fillna(""); st.dataframe(t)
+                                    t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
+                            else: st.warning(f"⚠️ {nm} (시트 없음)")
+
+                with c2:
+                    st.subheader("2. 확인검사")
+                    c_l = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
+                    w_l = ["측정소 구조 및 설비", "시료채취조", "
