@@ -7,32 +7,40 @@ import os
 st.set_page_config(page_title="수질 TMS 시험항목 도구", layout="wide")
 st.title("📋 수질 TMS 개선내역별 시험항목")
 
-# 2. 데이터 로드 함수
+# 2. 데이터 로드 함수 (파일명 유연성 강화)
 @st.cache_data
 def load_all_data():
     try:
         files = os.listdir('.')
-        # 파일명을 유연하게 찾기 (가이드북, 통합시험, 확인검사, 상대정확도 키워드 기준)
-        guide_path = next((f for f in files if '가이드북' in f), '개선내역에 따른 시험방법.xlsx')
-        report_path = next((f for f in files if '1.통합시험' in f), '1.통합시험 조사표.xlsx')
-        check_path = next((f for f in files if '2.확인검사' in f), '2.확인검사 조사표.xlsx')
-        rel_path = next((f for f in files if '상대정확도' in f), '3.상대정확도 결과서.xlsx')
         
+        # 키워드를 포함하는 파일이 있는지 검색 (대소문자 구분 없이)
+        guide_path = next((f for f in files if '가이드북' in f or '시험방법' in f), None)
+        report_path = next((f for f in files if '1.통합시험' in f), None)
+        check_path = next((f for f in files if '2.확인검사' in f), None)
+        rel_path = next((f for f in files if '상대정확도' in f or '3.상대정확도' in f), None)
+        
+        # 필수 파일인 '가이드북'이 없는 경우 에러 메시지 출력
+        if not guide_path:
+            st.error(f"❌ 가이드북(시험방법) 파일을 찾을 수 없습니다. 현재 폴더 파일 목록: {files}")
+            return None, None, None, None
+            
         # 가이드북 로드
         guide_df = pd.read_excel(guide_path, sheet_name='★최종(가이드북)', skiprows=1)
         guide_df.iloc[:, 1] = guide_df.iloc[:, 1].ffill()
         
-        # 각 조사표 시트 로드
-        report_sheets = pd.read_excel(report_path, sheet_name=None)
-        check_sheets = pd.read_excel(check_path, sheet_name=None) if os.path.exists(check_path) else {}
-        rel_sheets = pd.read_excel(rel_path, sheet_name=None) if os.path.exists(rel_path) else {}
+        # 각 조사표 시트 로드 (파일이 존재할 때만)
+        report_sheets = pd.read_excel(report_path, sheet_name=None) if report_path else {}
+        check_sheets = pd.read_excel(check_path, sheet_name=None) if check_path else {}
+        rel_sheets = pd.read_excel(rel_path, sheet_name=None) if rel_path else {}
         
         return guide_df, report_sheets, check_sheets, rel_sheets
     except Exception as e:
-        st.error(f"⚠️ 파일을 불러올 수 없습니다. 파일명을 확인해주세요: {e}")
+        st.error(f"⚠️ 데이터를 처리하는 중 오류가 발생했습니다: {e}")
         return None, None, None, None
 
 guide_df, report_sheets, check_sheets, rel_sheets = load_all_data()
+
+# --- 이하 로직은 동일 (is_checked 함수 및 UI 구성) ---
 
 def is_checked(value):
     if pd.isna(value): return False
@@ -78,4 +86,23 @@ if guide_df is not None:
                                     with st.expander(f"✅ {matched_name}", expanded=False):
                                         df = report_sheets[matched_name].fillna("")
                                         st.dataframe(df, use_container_width=True)
-                                        df_exp = df.copy(); df_exp.insert(0, '대분류', '통합시험');
+                                        df_exp = df.copy(); df_exp.insert(0, '대분류', '통합시험'); df_exp.insert(1, '시험항목', matched_name)
+                                        all_data_frames.append(df_exp)
+                    else: st.info("📍 대상 아님")
+
+                # [2단: 확인검사]
+                with col2:
+                    st.markdown("#### 🔍 2. 확인검사")
+                    check_base_names = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
+                    water_structure_sheets = ["측정소 구조 및 설비", "시료채취조", "형식승인", "측정방법", "측정범위", "교정기능(표준물질)", "정도검사 교정일자"]
+                    
+                    found_check = any(is_checked(target_row.iloc[11 + i]) for i in range(len(check_base_names)))
+                    if found_check:
+                        st.error("📍 수행 대상")
+                        for i, name in enumerate(check_base_names):
+                            if is_checked(target_row.iloc[11 + i]):
+                                if name == "외관 및 구조":
+                                    for s_name in water_structure_sheets:
+                                        if s_name in check_sheets:
+                                            with st.expander(f"✅ {s_name}", expanded=False):
+                                                df = check_sheets[s_name].fillna("")
