@@ -6,7 +6,7 @@ from io import BytesIO
 # 페이지 설정
 st.set_page_config(page_title="수질 TMS 스마트 가이드", layout="wide")
 
-# 디자인 CSS (기존 스타일 유지)
+# 디자인 CSS
 st.markdown("""
     <style>
     .main-title { font-size: 2.2rem; font-weight: 800; color: #1E3A8A; text-align: center; margin-bottom: 2rem; }
@@ -21,7 +21,6 @@ def load_all_resources():
         g_p = next((f for f in f_list if '가이드북' in f or '시험방법' in f), None)
         r_p = next((f for f in f_list if '1.통합' in f), None)
         c_p = next((f for f in f_list if '2.확인' in f), None)
-        # '상대' 키워드 파일 로드 (확인서 우선)
         s_p = next((f for f in f_list if '상대' in f), None)
         
         if not g_p: return None, None, None, None
@@ -82,22 +81,28 @@ if df is not None:
                         cat_raw = str(top_h[i])
                         name = str(sub_h[i])
                         
-                        if "통합" in cat_raw: main_cat = "통합시험"; target_col = col1
-                        elif "확인" in cat_raw: main_cat = "확인검사"; target_col = col2
-                        elif "상대" in cat_raw: main_cat = "상대정확도"; target_col = col3
-                        else: continue
+                        # --- 상대정확도 nan 처리 로직 추가 ---
+                        if "상대" in cat_raw:
+                            main_cat = "상대정확도"
+                            target_col = col3
+                            if name.lower() in ['nan', '', 'none']:
+                                name = "상대정확도시험"
+                        elif "통합" in cat_raw:
+                            main_cat = "통합시험"
+                            target_col = col1
+                        elif "확인" in cat_raw:
+                            main_cat = "확인검사"
+                            target_col = col2
+                        else:
+                            continue
 
                         with target_col:
-                            # expanded=False 로 설정하여 기본적으로 접혀있게 함
                             with st.expander(f"✅ {name}", expanded=False):
                                 sheets = survey_data.get(main_cat, {})
                                 found = False
                                 for s_name, s_df in sheets.items():
-                                    # 매칭 로직 (상대정확도는 해당 파일의 모든 시트 매칭 허용)
-                                    if (s_name.replace(" ","") in name.replace(" ","")) or \
-                                       (name.replace(" ","") in s_name.replace(" ","")) or \
-                                       (main_cat == "상대정확도"):
-                                        
+                                    # 상대정확도는 모든 시트를 연결, 그 외는 이름 매칭
+                                    if (main_cat == "상대정확도") or (s_name.replace(" ","") in name.replace(" ","")) or (name.replace(" ","") in s_name.replace(" ","")):
                                         st.dataframe(s_df.fillna(""), use_container_width=True)
                                         header_df = pd.DataFrame([[f"■ {name}"]], columns=[s_df.columns[0] if not s_df.empty else "항목"])
                                         combined_sheets[main_cat].append(header_df)
@@ -123,4 +128,4 @@ if df is not None:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 else:
-    st.error("가이드북 및 조사표 파일을 데이터 폴더에 넣어주세요.")
+    st.error("파일 로드 실패")
