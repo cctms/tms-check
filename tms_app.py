@@ -7,25 +7,32 @@ st.set_page_config(page_title="TMS 시험항목 도구", layout="wide")
 
 st.title("📋 TMS 개선내역별 시험항목")
 
-# 2. 데이터 로드 함수
+# 2. 데이터 로드 함수 (새로운 파일들 추가)
 @st.cache_data
 def load_all_data():
     try:
         guide_path = '개선내역에 따른 시험방법(2025 최종).xlsx'
         report_path = '1.통합시험 조사표.xlsx'
+        check_path = '2.확인검사 조사표.xlsx'
+        rel_path = '3.상대정확도 결과서.xlsx' # 파일명이 다르면 이 부분을 수정하세요!
         
         guide_df = pd.read_excel(guide_path, sheet_name='★최종(가이드북)', skiprows=1)
         guide_df.iloc[:, 1] = guide_df.iloc[:, 1].ffill()
         
+        # 통합시험 시트 로드
         report_sheets = pd.read_excel(report_path, sheet_name=None)
         sheet_map = {name.replace(" ", ""): name for name in report_sheets.keys()}
         
-        return guide_df, report_sheets, sheet_map
+        # 확인검사 및 상대정확도 데이터 로드
+        check_sheets = pd.read_excel(check_path, sheet_name=None)
+        rel_sheets = pd.read_excel(rel_path, sheet_name=None)
+        
+        return guide_df, report_sheets, sheet_map, check_sheets, rel_sheets
     except Exception as e:
         st.error(f"⚠️ 파일을 불러올 수 없습니다: {e}")
-        return None, None, None
+        return None, None, None, None, None
 
-guide_df, report_sheets, sheet_map = load_all_data()
+guide_df, report_sheets, sheet_map, check_sheets, rel_sheets = load_all_data()
 
 def is_checked(value):
     if pd.isna(value): return False
@@ -42,7 +49,6 @@ if guide_df is not None:
         if not search_results.empty:
             search_results['display_name'] = search_results.apply(lambda x: f"[{x.iloc[1]}] {str(x.iloc[2]).strip()}", axis=1)
             options = search_results['display_name'].tolist()
-            
             selected_option = st.selectbox(f"검색 결과 ({len(options)}건):", ["선택하세요"] + options)
             
             if selected_option != "선택하세요":
@@ -51,79 +57,66 @@ if guide_df is not None:
                 selected_sub = str(target_row.iloc[2]).replace('\n', ' ').strip()
                 
                 st.divider()
-                
-                # 제목 줄바꿈 방지 스타일
-                st.markdown(
-                    f"""
-                    <div style="white-space: nowrap; overflow-x: auto; font-size: 1.6rem; font-weight: 700; 
+                st.markdown(f"""<div style="white-space: nowrap; overflow-x: auto; font-size: 1.6rem; font-weight: 700; 
                     padding: 10px 0px; color: #0E1117; border-bottom: 2px solid #F0F2F6; margin-bottom: 20px;">
-                        🎯 분석 결과: {full_display_name}
-                    </div>
-                    """, 
-                    unsafe_allow_html=True
-                )
+                    🎯 분석 결과: {full_display_name}</div>""", unsafe_allow_html=True)
                 
                 all_data_frames = []
-
-                # --- 🎨 3단 레이아웃 (너비 동일하게 [1, 1, 1]) ---
                 col1, col2, col3 = st.columns([1, 1, 1])
 
                 # [1단: 통합시험]
                 with col1:
                     st.markdown("#### 📝 1. 통합시험")
-                    test_items = [
-                        ("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
-                        ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
-                        ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)
-                    ]
+                    test_items = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
+                                  ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
+                                  ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
                     found_test = False
                     for name, col_idx in test_items:
                         if is_checked(target_row.iloc[col_idx]):
                             found_test = True
                             clean_name = name.replace(" ", "")
-                            matched_name = next((val for key, val in sheet_map.items() if key == clean_name), None) or (name if name in report_sheets else None)
-                            if matched_name:
+                            matched_name = next((val for key, val in sheet_map.items() if key == clean_name), None)
+                            if matched_name and matched_name in report_sheets:
                                 with st.expander(f"✅ {matched_name}", expanded=True):
-                                    df_content = report_sheets[matched_name].fillna("")
-                                    st.dataframe(df_content, use_container_width=True)
-                                    temp_df = df_content.copy()
-                                    temp_df.insert(0, '대분류', '통합시험')
-                                    temp_df.insert(1, '시험항목', matched_name)
-                                    all_data_frames.append(temp_df)
-                    
-                    if not found_test:
-                        st.info("📍 대상 아님")
+                                    df = report_sheets[matched_name].fillna("")
+                                    st.dataframe(df, use_container_width=True)
+                                    df.insert(0, '대분류', '통합시험'), df.insert(1, '시험항목', matched_name)
+                                    all_data_frames.append(df)
+                    if not found_test: st.info("📍 대상 아님")
 
-                # [2단: 확인검사]
+                # [2단: 확인검사 (새 파일 연결)]
                 with col2:
                     st.markdown("#### 🔍 2. 확인검사")
-                    check_items = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
-                    check_list = []
-                    for i, name in enumerate(check_items):
+                    check_names = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
+                    found_check = False
+                    for i, name in enumerate(check_names):
                         if is_checked(target_row.iloc[11 + i]):
-                            check_list.append({"항목": name, "수행여부": "수행"})
-                    
-                    if check_list:
-                        active_checks = pd.DataFrame(check_list)
-                        st.table(active_checks)
-                        check_df_excel = active_checks.copy()
-                        check_df_excel.insert(0, '대분류', '확인검사')
-                        check_df_excel.rename(columns={'항목': '시험항목', '수행여부': '내용/결과'}, inplace=True)
-                        all_data_frames.append(check_df_excel)
-                    else:
-                        st.info("📍 대상 아님")
+                            found_check = True
+                            # 엑셀 파일 내 시트 이름과 매칭 시도
+                            if name in check_sheets:
+                                with st.expander(f"✅ {name}", expanded=True):
+                                    df = check_sheets[name].fillna("")
+                                    st.dataframe(df, use_container_width=True)
+                                    df.insert(0, '대분류', '확인검사'), df.insert(1, '시험항목', name)
+                                    all_data_frames.append(df)
+                            else:
+                                st.write(f"✅ {name} (수행)")
+                    if not found_check: st.info("📍 대상 아님")
 
-                # [3단: 상대정확도]
+                # [3단: 상대정확도 (새 파일 연결)]
                 with col3:
                     st.markdown("#### 📊 3. 상대정확도")
-                    rel_status = "수행 대상" if is_checked(target_row.iloc[22]) else "대상 아님"
-                    if "수행" in rel_status:
-                        st.error(f"📍 {rel_status}")
+                    if is_checked(target_row.iloc[22]):
+                        st.error("📍 수행 대상")
+                        # 첫 번째 시트나 특정 이름의 시트를 가져오도록 설정
+                        rel_sheet_name = list(rel_sheets.keys())[0] 
+                        with st.expander("📝 상대정확도 결과서 보기", expanded=True):
+                            df = rel_sheets[rel_sheet_name].fillna("")
+                            st.dataframe(df, use_container_width=True)
+                            df.insert(0, '대분류', '상대정확도'), df.insert(1, '시험항목', '상대정확도 시험')
+                            all_data_frames.append(df)
                     else:
-                        st.info(f"📍 {rel_status}")
-                    
-                    rel_df = pd.DataFrame([{"대분류": "상대정확도", "시험항목": "상대정확도 시험", "내용/결과": rel_status}])
-                    all_data_frames.append(rel_df)
+                        st.info("📍 대상 아님")
 
                 # --- 💾 엑셀 다운로드 ---
                 if all_data_frames:
@@ -132,14 +125,6 @@ if guide_df is not None:
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         final_df.to_excel(writer, index=False, sheet_name='전체항목')
-                    
-                    st.download_button(
-                        label="📥 전체 결과 엑셀 다운로드",
-                        data=output.getvalue(),
-                        file_name=f"TMS_Report_{selected_sub}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-        else:
-            st.warning("검색 결과가 없습니다.")
-    else:
-        st.info("검색창에 개선내역 키워드를 입력하세요.")
+                    st.download_button(label="📥 전체 결과 엑셀 다운로드", data=output.getvalue(),
+                                       file_name=f"TMS_Report_{selected_sub}.xlsx",
+                                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
