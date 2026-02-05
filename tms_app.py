@@ -21,6 +21,7 @@ def load_data():
         df = pd.read_excel(g_p, sheet_name=g_sn, skiprows=1)
         df.iloc[:, 1] = df.iloc[:, 1].ffill()
         
+        # sheet_name=None으로 가져오면 순서가 유지된 딕셔너리가 반환됩니다.
         r_s = pd.read_excel(r_p, sheet_name=None) if r_p else {}
         c_s = pd.read_excel(c_p, sheet_name=None) if c_p else {}
         s_s = pd.read_excel(s_p, sheet_name=None) if s_p else {}
@@ -38,11 +39,9 @@ def ck(v):
 def find_sheet_strict(sheets_dict, target_name):
     if not sheets_dict: return None
     t_clean = str(target_name).replace(" ", "")
-    # 1. 시트 이름에 대상 글자가 포함되어 있는지 확인
     for s_name in sheets_dict.keys():
         s_clean = str(s_name).replace(" ", "")
         if t_clean in s_clean or s_clean in t_clean: return s_name
-    # 2. 숫자 기반 매칭 (7, 8번 등)
     t_num = re.findall(r'\d+', str(target_name))
     if t_num:
         for s_name in sheets_dict.keys():
@@ -63,9 +62,9 @@ if df is not None:
                 row = res[res['dn'] == sel].iloc[0]
                 is_c = "교체" in str(row.iloc[2])
                 all_d = []
-                c1, c2, c3 = st.columns(3)
+                col1, col2, col3 = st.columns(3)
 
-                with c1:
+                with col1:
                     st.subheader("1. 통합시험")
                     t_l = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5), ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8), ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
                     for nm, idx in t_l:
@@ -75,33 +74,30 @@ if df is not None:
                                 with st.expander(f"✅ {nm}"):
                                     t = r_s[m_n].fillna(""); st.dataframe(t)
                                     t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
-                            else: st.warning(f"⚠️ {nm} 없음")
 
-                with c2:
+                with col2:
                     st.subheader("2. 확인검사")
-                    # 확인검사 가이드북 기준 리스트 (인덱스 11~21)
-                    c_l = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
-                    # 외관 및 구조에 포함되는 실제 시트 키워드들
-                    w_l = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
+                    # 가이드북에서 'O' 표시된 항목들의 키워드 추출
+                    c_guide = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
+                    w_guide = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
                     
-                    for i, nm in enumerate(c_l):
+                    active_keywords = []
+                    for i, nm in enumerate(c_guide):
                         if ck(row.iloc[11+i]):
-                            if nm == "외관 및 구조":
-                                for wn in w_l:
-                                    m_n = find_sheet_strict(c_s, wn)
-                                    if m_n:
-                                        with st.expander(f"✅ {m_n}"):
-                                            t = c_s[m_n].fillna(""); st.dataframe(t)
-                                            t_exp = t.copy(); t_exp.insert(0, '시험', m_n); all_d.append(t_exp)
-                            else:
-                                m_n = find_sheet_strict(c_s, nm)
-                                if m_n:
-                                    with st.expander(f"✅ {m_n}"):
-                                        t = c_s[m_n].fillna(""); st.dataframe(t)
-                                        t_exp = t.copy(); t_exp.insert(0, '시험', m_n); all_d.append(t_exp)
-                                else: st.info(f"✅ {nm} (조사표 시트 없음)")
+                            if nm == "외관 및 구조": active_keywords.extend(w_guide)
+                            else: active_keywords.append(nm)
+                    
+                    # 실제 엑셀 시트 순서대로 순회하면서, 활성화된 키워드와 매칭되면 출력
+                    if c_s:
+                        for s_name in c_s.keys():
+                            s_clean = str(s_name).replace(" ", "")
+                            # 현재 시트가 가이드북에서 체크된 키워드 중 하나를 포함하는지 확인
+                            if any(str(kw).replace(" ", "") in s_clean or s_clean in str(kw).replace(" ", "") for kw in active_keywords):
+                                with st.expander(f"✅ {s_name}"):
+                                    t = c_s[s_name].fillna(""); st.dataframe(t)
+                                    t_exp = t.copy(); t_exp.insert(0, '시험', s_name); all_d.append(t_exp)
 
-                with c3:
+                with col3:
                     st.subheader("3. 상대정확도")
                     if ck(row.iloc[22]) and s_s:
                         k = list(s_s.keys())[0]
