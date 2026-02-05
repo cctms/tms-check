@@ -52,6 +52,7 @@ if df is not None:
 
                 with col1:
                     st.subheader("1. 통합시험")
+                    found_r = False
                     t_l = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5), ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8), ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
                     for nm, idx in t_l:
                         if ck(row.iloc[idx]) or (is_c and idx in [9, 10]):
@@ -60,13 +61,14 @@ if df is not None:
                                     with st.expander(f"✅ {nm}"):
                                         t = r_s[s_name].fillna(""); st.dataframe(t)
                                         t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
+                                        found_r = True
+                    if not found_r:
+                        st.info("해당사항 없음")
 
                 with col2:
                     st.subheader("2. 확인검사")
-                    # 확인할 키워드 그룹 정의
+                    found_c = False
                     active_keywords = []
-                    
-                    # 1. 고정 인덱스 항목 (외관 및 구조 ~ 검출한계)
                     c_guide = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
                     w_sub = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
                     
@@ -75,25 +77,24 @@ if df is not None:
                             if nm == "외관 및 구조": active_keywords.extend(w_sub)
                             else: active_keywords.append(nm)
 
-                    # 2. 추가 요청 항목 (입지조건, 유량계 누적값) - 가이드북 열 이름에서 검색
                     for col_name in df.columns:
                         col_str = str(col_name)
                         if any(k in col_str for k in ["입지조건", "유량계", "누적값"]):
-                            # 해당 열의 데이터를 가져와서 체크되었는지 확인
-                            val = row[col_name]
-                            if ck(val):
+                            if ck(row[col_name]):
                                 if "입지조건" in col_str: active_keywords.append("입지조건")
                                 if "유량계" in col_str or "누적값" in col_str: active_keywords.append("유량")
 
-                    if c_s:
-                        # 조사표의 시트 순서대로 루프
+                    if c_s and active_keywords:
                         for s_name in c_s.keys():
                             s_clean = str(s_name).replace(" ", "")
-                            # 활성화된 키워드 중 하나라도 시트명에 포함되면 출력
                             if any(str(kw).replace(" ", "") in s_clean for kw in active_keywords):
                                 with st.expander(f"✅ {s_name}"):
                                     t = c_s[s_name].fillna(""); st.dataframe(t)
                                     t_exp = t.copy(); t_exp.insert(0, '시험', s_name); all_d.append(t_exp)
+                                    found_c = True
+                    
+                    if not found_c:
+                        st.info("해당사항 없음")
 
                 with col3:
                     st.subheader("3. 상대정확도")
@@ -102,6 +103,8 @@ if df is not None:
                         with st.expander("✅ 상대정확도"):
                             t = s_s[k].fillna(""); st.dataframe(t)
                             t_exp = t.copy(); t_exp.insert(0, '시험', '상대정확도'); all_d.append(t_exp)
+                    else:
+                        st.info("해당사항 없음")
 
                 if all_d:
                     out = BytesIO()
