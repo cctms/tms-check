@@ -6,11 +6,28 @@ from io import BytesIO
 # 페이지 설정
 st.set_page_config(page_title="수질 TMS 스마트 가이드", layout="wide")
 
-# 디자인 CSS
+# 디자인 CSS: 제목 크기를 3.0rem으로 키우고 스타일을 강화했습니다.
 st.markdown("""
     <style>
-    .main-title { font-size: 2.2rem; font-weight: 800; color: #1E3A8A; text-align: center; margin-bottom: 2rem; }
-    .section-header { background: #1E3A8A; color: white; padding: 10px; border-radius: 5px; text-align: center; font-weight: 600; margin-bottom: 15px; }
+    .main-title { 
+        font-size: 3.0rem; 
+        font-weight: 900; 
+        color: #1E3A8A; 
+        text-align: center; 
+        margin-top: 1rem;
+        margin-bottom: 3rem; 
+        text-shadow: 1px 1px 2px #d1d1d1;
+    }
+    .section-header { 
+        background: #1E3A8A; 
+        color: white; 
+        padding: 12px; 
+        border-radius: 8px; 
+        text-align: center; 
+        font-weight: 700; 
+        font-size: 1.2rem;
+        margin-bottom: 15px; 
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -52,19 +69,20 @@ def is_ok(val):
     s = str(val).replace(" ", "").upper()
     return any(m in s for m in ['O', 'ㅇ', '○', 'V', '◎', '대상'])
 
-st.markdown('<p class="main-title">🌊 수질 TMS 맞춤 통합 조사표 시스템</p>', unsafe_allow_html=True)
+# 수정된 메인 제목
+st.markdown('<p class="main-title">🌊 수질TMS 개선내역에 따른 통합 조사표</p>', unsafe_allow_html=True)
 
 if df is not None:
     c_left, c_mid, c_right = st.columns([1, 2, 1])
     with c_mid:
-        search_q = st.text_input("🔍 개선내역 키워드 입력", placeholder="예: 측정기기 교체")
+        search_q = st.text_input("🔍 개선내역 키워드 입력 (예: 측정기기 교체)", placeholder="검색어를 입력하세요")
     
     if search_q:
         matches = df[df.iloc[:, 2].astype(str).str.contains(search_q, na=False)]
         if not matches.empty:
             matches['dp'] = matches.apply(lambda x: f"[{x.iloc[1]}] {x.iloc[2]}", axis=1)
             with c_mid:
-                sel = st.selectbox("📌 항목 선택", ["선택하세요"] + matches['dp'].tolist())
+                sel = st.selectbox("📌 해당되는 개선내역 항목을 선택하세요", ["선택하세요"] + matches['dp'].tolist())
             
             if sel != "선택하세요":
                 target_row = matches[matches['dp'] == sel].iloc[0]
@@ -81,7 +99,7 @@ if df is not None:
                         cat_raw = str(top_h[i])
                         name = str(sub_h[i])
                         
-                        # --- 상대정확도 nan 처리 로직 추가 ---
+                        # 상대정확도 nan 처리 및 섹션 분류
                         if "상대" in cat_raw:
                             main_cat = "상대정확도"
                             target_col = col3
@@ -101,7 +119,6 @@ if df is not None:
                                 sheets = survey_data.get(main_cat, {})
                                 found = False
                                 for s_name, s_df in sheets.items():
-                                    # 상대정확도는 모든 시트를 연결, 그 외는 이름 매칭
                                     if (main_cat == "상대정확도") or (s_name.replace(" ","") in name.replace(" ","")) or (name.replace(" ","") in s_name.replace(" ","")):
                                         st.dataframe(s_df.fillna(""), use_container_width=True)
                                         header_df = pd.DataFrame([[f"■ {name}"]], columns=[s_df.columns[0] if not s_df.empty else "항목"])
@@ -122,10 +139,10 @@ if df is not None:
                 st.divider()
                 if any(combined_sheets.values()):
                     st.download_button(
-                        label=f"📥 {sel} 통합 조사표 다운로드",
+                        label=f"📥 {sel} 관련 통합 조사표 다운로드",
                         data=output_xlsx.getvalue(),
                         file_name=f"수질TMS_통합조사표_{sel.replace(' ', '_')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 else:
-    st.error("파일 로드 실패")
+    st.error("데이터 파일을 찾을 수 없습니다.")
