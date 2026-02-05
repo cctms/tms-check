@@ -29,12 +29,13 @@ def load_data():
 
 df, r_s, c_s, s_s, f_list = load_data()
 
-# 문자열 안에 'O', 'V', '○' 등이 포함되어 있는지 검사하는 함수
+# ㅇ, O, ○, V 등 어떤 문자라도 포함되어 있으면 체크로 간주하는 함수
 def ck(v):
     if pd.isna(v): return False
     s = str(v).replace(" ", "").upper()
-    # 'O'가 포함되어 있거나 특정 체크 기호가 있는 경우 True
-    return any(m in s for m in ['O', '○', 'V', 'CHECK', '◎'])
+    # 한국어 'ㅇ'과 영문 'O', 동그라미 기호 등을 모두 포함
+    check_marks = ['O', 'ㅇ', '○', '◎', 'V', 'CHECK']
+    return any(m in s for m in check_marks)
 
 st.title("📋 수질 TMS 시험항목 (2025 최종 기준)")
 
@@ -48,16 +49,18 @@ if df is not None:
             
             if sel != "선택":
                 row = res[res['dn'] == sel].iloc[0]
-                all_d = []
                 
-                # 체크된 열의 키워드 추출
-                checked_keywords = []
+                # 'ㅇ'이 포함된 열 이름(시험종류) 추출
+                checked_columns = []
                 for col_name in df.columns:
                     if ck(row[col_name]):
-                        # 열 이름에서 핵심 단어 추출 (예: "측정소 입지조건" -> "입지조건")
-                        clean_col = str(col_name).replace(" ", "").replace("\n", "")
-                        checked_keywords.append(clean_col)
+                        checked_columns.append(str(col_name).strip())
 
+                # 상단에 선택된 시험 종류 표시
+                if checked_keywords := [c for c in checked_columns if c not in ["순번", "분류", "개선내역"]]:
+                    st.success(f"🔍 **판단된 시험 종류:** {', '.join(checked_keywords)}")
+                
+                all_d = []
                 col1, col2, col3 = st.columns(3)
 
                 # 1. 통합시험
@@ -66,20 +69,18 @@ if df is not None:
                     found_r = False
                     for s_name in r_s.keys():
                         s_clean = str(s_name).replace(" ", "")
-                        if any(kw in s_clean or s_clean in kw for kw in checked_keywords):
+                        if any(kw.replace(" ", "") in s_clean or s_clean in kw.replace(" ", "") for kw in checked_columns):
                             with st.expander(f"✅ {s_name}"):
                                 t = r_s[s_name].fillna(""); st.dataframe(t)
                                 t_exp = t.copy(); t_exp.insert(0, '시험', s_name); all_d.append(t_exp)
                                 found_r = True
                     if not found_r: st.info("해당사항 없음")
 
-                # 2. 확인검사 (입지조건, 유량계 누적값 포함)
+                # 2. 확인검사 (입지조건, 유량계 포함)
                 with col2:
                     st.subheader("2. 확인검사")
                     found_c = False
-                    # 외관 및 구조 예외 키워드
                     w_sub = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
-                    # 유량 관련 키워드 통합
                     flow_keywords = ["유량", "누적"]
                     
                     if c_s:
@@ -87,19 +88,15 @@ if df is not None:
                             s_clean = str(s_name).replace(" ", "")
                             match = False
                             
-                            # 1) 일반 매칭
-                            if any(kw in s_clean or s_clean in kw for kw in checked_keywords):
+                            # 1) 열 이름 매칭
+                            if any(kw.replace(" ", "") in s_clean or s_clean in kw.replace(" ", "") for kw in checked_columns):
                                 match = True
-                            
-                            # 2) '외관' 체크 시 관련 시트 매칭
-                            if not match and any("외관" in kw for kw in checked_keywords):
-                                if any(sub in s_clean for sub in w_sub):
-                                    match = True
-                            
-                            # 3) '유량' 또는 '누적값' 체크 시 매칭
-                            if not match and any(f_kw in "".join(checked_keywords) for f_kw in flow_keywords):
-                                if any(f_kw in s_clean for f_kw in flow_keywords):
-                                    match = True
+                            # 2) 외관 및 구조 예외
+                            if not match and any("외관" in kw for kw in checked_columns):
+                                if any(sub in s_clean for sub in w_sub): match = True
+                            # 3) 유량계/누적값 예외
+                            if not match and any(f_kw in "".join(checked_columns) for f_kw in flow_keywords):
+                                if any(f_kw in s_clean for f_kw in flow_keywords): match = True
                                     
                             if match:
                                 with st.expander(f"✅ {s_name}"):
@@ -111,15 +108,13 @@ if df is not None:
                 # 3. 상대정확도
                 with col3:
                     st.subheader("3. 상대정확도")
-                    found_s = False
-                    if any("상대" in kw for kw in checked_keywords):
+                    if any("상대" in kw for kw in checked_columns):
                         if s_s:
                             k = list(s_s.keys())[0]
                             with st.expander("✅ 상대정확도"):
                                 t = s_s[k].fillna(""); st.dataframe(t)
                                 t_exp = t.copy(); t_exp.insert(0, '시험', '상대정확도'); all_d.append(t_exp)
-                                found_s = True
-                    if not found_s: st.info("해당사항 없음")
+                    else: st.info("해당사항 없음")
 
                 if all_d:
                     out = BytesIO()
