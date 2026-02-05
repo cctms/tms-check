@@ -6,19 +6,19 @@ from io import BytesIO
 # 페이지 설정
 st.set_page_config(page_title="수질 TMS 스마트 가이드", layout="wide")
 
-# 디자인 CSS: !important를 추가하여 스타일을 강제로 덮어씁니다.
+# 디자인 CSS: 제목 크기를 80px의 0.7배인 56px로 조정
 st.markdown("""
     <style>
-    /* 제목 스타일 - 크기를 기존보다 2배 이상 키움 */
     .super-title { 
-        font-size: 80px !important;  /* 절대적인 픽셀 값으로 고정 */
-        font-weight: 900 !important; 
+        font-size: 56px !important;  /* 80px * 0.7 = 56px */
+        font-weight: 800 !important; 
         color: #1E3A8A !important; 
         text-align: center !important; 
-        margin-top: 50px !important;
-        margin-bottom: 70px !important; 
+        margin-top: 30px !important;
+        margin-bottom: 40px !important; 
         line-height: 1.2 !important;
         display: block !important;
+        letter-spacing: -1px; /* 글자 간격을 살짝 좁혀 더 세련되게 */
     }
     
     .section-header { 
@@ -28,7 +28,7 @@ st.markdown("""
         border-radius: 8px; 
         text-align: center; 
         font-weight: 700; 
-        font-size: 24px;
+        font-size: 20px;
         margin-bottom: 15px; 
     }
     </style>
@@ -72,7 +72,7 @@ def is_ok(val):
     s = str(val).replace(" ", "").upper()
     return any(m in s for m in ['O', 'ㅇ', '○', 'V', '◎', '대상'])
 
-# 제목 출력 - 클래스명을 super-title로 변경하여 적용 시도
+# 제목 출력
 st.markdown('<div class="super-title">수질TMS 개선내역에 따른 통합 조사표</div>', unsafe_allow_html=True)
 
 if df is not None:
