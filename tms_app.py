@@ -5,21 +5,21 @@ import os
 
 st.set_page_config(page_title="TMS", layout="wide")
 
-# 1. 파일 로드 함수 (이름 매칭 강화)
 @st.cache_data
 def load_data():
     try:
         f_list = os.listdir('.')
-        # 파일명에 특정 단어가 포함되어 있는지 확인
         g_p = next((f for f in f_list if '가이드북' in f or '시험방법' in f), None)
         r_p = next((f for f in f_list if '1.통합' in f), None)
         c_p = next((f for f in f_list if '2.확인' in f), None)
         s_p = next((f for f in f_list if '상대' in f or '3.' in f), None)
         
-        if not g_p: 
-            return None, None, None, None, f_list
+        if not g_p: return None, None, None, None, f_list
             
-        df = pd.read_excel(g_p, sheet_name='★최종(가이드북)', skiprows=1)
+        # 가이드북 로드 (시트명 유연하게 체크)
+        xl_g = pd.ExcelFile(g_p)
+        g_sn = next((s for s in xl_g.sheet_names if '가이드북' in s), xl_g.sheet_names[0])
+        df = pd.read_excel(g_p, sheet_name=g_sn, skiprows=1)
         df.iloc[:, 1] = df.iloc[:, 1].ffill()
         
         r_s = pd.read_excel(r_p, sheet_name=None) if r_p else {}
@@ -37,15 +37,22 @@ def ck(v):
     s = str(v).replace(" ", "").upper()
     return any(m in s for m in ['O', '○', 'V', 'CHECK'])
 
+# 시트 이름 찾는 보조 함수 (공백 무시, 부분 일치)
+def find_sheet(sheets_dict, target_name):
+    if not sheets_dict: return None
+    target = target_name.replace(" ", "").split('.')[-1] # "1. 일반현황" -> "일반현황"
+    for s_name in sheets_dict.keys():
+        clean_s_name = str(s_name).replace(" ", "")
+        if target in clean_s_name:
+            return s_name
+    return None
+
 st.title("📋 수질 TMS 시험항목")
 
-# 2. 파일이 없을 경우 경고 메시지 표시
 if df is None:
-    st.error("⚠️ '가이드북' 엑셀 파일을 찾을 수 없습니다.")
-    st.info(f"현재 폴더의 파일 목록: {f_list}")
-    st.write("파일명에 '가이드북'이라는 단어가 포함되어 있는지 확인해 주세요.")
+    st.error("⚠️ 파일을 찾을 수 없습니다.")
+    st.info(f"폴더 내 파일: {f_list}")
 
-# 3. 검색창은 파일 유무와 상관없이 표시 (단, 데이터가 있어야 작동)
 q = st.text_input("개선내역 검색 (예: 기기교체)", "")
 
 if q and df is not None:
@@ -66,14 +73,13 @@ if q and df is not None:
                 t_l = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5), ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8), ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
                 for nm, idx in t_l:
                     if ck(row.iloc[idx]) or (is_c and idx in [9, 10]):
-                        # 시트명에 해당 이름이 포함되어 있는지 확인 (부분 일치 허용)
-                        m = next((s for s in r_s.keys() if nm.strip() in s.strip()), None)
-                        if m:
-                            with st.expander(nm):
-                                t = r_s[m].fillna(""); st.dataframe(t)
+                        m_n = find_sheet(r_s, nm) # 강화된 검색 로직 사용
+                        if m_n:
+                            with st.expander(f"✅ {nm}"):
+                                t = r_s[m_n].fillna(""); st.dataframe(t)
                                 t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
                         else:
-                            st.warning(f"⚠️ {nm} 시트를 찾을 수 없음")
+                            st.warning(f"⚠️ {nm} (시트 없음)")
 
             with c2:
                 st.subheader("2. 확인검사")
@@ -83,28 +89,31 @@ if q and df is not None:
                     if ck(row.iloc[11+i]):
                         if nm == "외관 및 구조":
                             for wn in w_l:
-                                if wn in c_s:
-                                    with st.expander(wn):
-                                        t = c_s[wn].fillna(""); st.dataframe(t)
+                                m_n = find_sheet(c_s, wn)
+                                if m_n:
+                                    with st.expander(f"✅ {wn}"):
+                                        t = c_s[m_n].fillna(""); st.dataframe(t)
                                         t_exp = t.copy(); t_exp.insert(0, '시험', wn); all_d.append(t_exp)
-                        elif nm in c_s:
-                            with st.expander(nm):
-                                t = c_s[nm].fillna(""); st.dataframe(t)
-                                t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
+                        else:
+                            m_n = find_sheet(c_s, nm)
+                            if m_n:
+                                with st.expander(f"✅ {nm}"):
+                                    t = c_s[m_n].fillna(""); st.dataframe(t)
+                                    t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
+                            else: st.write(f"✅ {nm} (조사표 없음)")
 
             with c3:
                 st.subheader("3. 상대정확도")
                 if ck(row.iloc[22]):
                     if s_s:
                         k = list(s_s.keys())[0]
-                        with st.expander("상대정확도 결과서"):
+                        with st.expander("✅ 상대정확도"):
                             t = s_s[k].fillna(""); st.dataframe(t)
                             t_exp = t.copy(); t_exp.insert(0, '시험', '상대정확도'); all_d.append(t_exp)
+                    else: st.info("✅ 대상 (결과서 파일 없음)")
 
             if all_d:
                 out = BytesIO()
                 with pd.ExcelWriter(out, engine='xlsxwriter') as wr:
                     pd.concat(all_d).to_excel(wr, index=False)
-                st.download_button("📥 전체 결과 엑셀 다운로드", out.getvalue(), "TMS_Report.xlsx")
-    else:
-        st.warning("검색 결과가 없습니다.")
+                st.download_button("📥 결과 엑셀 다운로드", out.getvalue(), "TMS_Report.xlsx")
