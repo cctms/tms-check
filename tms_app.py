@@ -16,7 +16,7 @@ def load_all_data():
         
         if not g_p: return None, None, None, None
         
-        # 가이드북 헤더 탐색 로직 (실제 시험명이 있는 행 찾기)
+        # 가이드북 헤더 탐색
         guide_raw = pd.read_excel(g_p, header=None)
         header_idx = 2
         for i in range(min(5, len(guide_raw))):
@@ -43,92 +43,80 @@ def is_checked(value):
     val = str(value).replace(" ", "").upper()
     return any(m in val for m in ['O', 'ㅇ', '○', 'V', '◎', '대상'])
 
-st.title("📋 개선내역별 수행항목 매칭 시스템")
+st.title("📋 수질 TMS 개선내역 매칭 결과")
 
 if df_guide is not None:
-    search_q = st.text_input("개선내역 입력 (예: 기기교체)", "")
+    search_q = st.text_input("개선내역 입력", "")
     
     if search_q:
         match_rows = df_guide[df_guide.iloc[:, 2].astype(str).str.contains(search_q, na=False)]
         
         if not match_rows.empty:
-            match_rows['display_name'] = match_rows.apply(lambda x: f"[{x.iloc[1]}] {x.iloc[2]}", axis=1)
-            selected_item = st.selectbox("항목 선택", ["선택하세요"] + match_rows['display_name'].tolist())
+            match_rows['dn'] = match_rows.apply(lambda x: f"[{x.iloc[1]}] {x.iloc[2]}", axis=1)
+            sel = st.selectbox("항목 선택", ["선택하세요"] + match_rows['dn'].tolist())
             
-            if selected_item != "선택하세요":
-                target_row = match_rows[match_rows['display_name'] == selected_item].iloc[0]
+            if sel != "선택하세요":
+                row = match_rows[match_rows['dn'] == sel].iloc[0]
                 
-                # 가이드북 체크 항목 추출
-                active_tests = [str(col).strip() for col in df_guide.columns if is_checked(target_row[col])]
-                active_tests = [t for t in active_tests if not any(ex in t for ex in ["순번", "분류", "개선내역", "Unnamed"])]
+                # 가이드북에서 'ㅇ' 체크된 모든 시험명 추출
+                active = [str(col).strip() for col in df_guide.columns if is_checked(row[col])]
+                active = [t for t in active if not any(ex in t for ex in ["순번", "분류", "개선내역", "Unnamed"])]
 
-                # --- 여기서부터 파일별로 분류하여 표출 ---
-                st.write("### 🔍 가이드북 기준 시험 분류")
-                
-                # 분류 기준 키워드
-                r_must = ["일반현황", "점검사항", "자료생성", "자료수집기", "관제센터"]
-                c_must = ["구조", "시료", "승인", "방법", "범위", "교정", "표준물질", "정도검사", "교정일자", "유량계", "누적값", "반복성", "드리프트", "재현성"]
-                
-                # 1. 통합시험 분류 항목
-                r_list = [t for t in active_tests if any(k in t for k in r_must)]
-                # 2. 확인검사 분류 항목
-                c_list = [t for t in active_tests if any(k in t for k in c_must)]
-                # 3. 상대정확도 분류 항목
-                s_list = [t for t in active_tests if "상대" in t]
-
-                m_col1, m_col2, m_col3 = st.columns(3)
-                with m_col1:
-                    st.info(f"**[통합시험]**\n\n" + ("\n".join([f"- {i}" for i in r_list]) if r_list else "해당 없음"))
-                with m_col2:
-                    st.success(f"**[확인검사]**\n\n" + ("\n".join([f"- {i}" for i in c_list]) if c_list else "해당 없음"))
-                with m_col3:
-                    st.warning(f"**[상대정확도]**\n\n" + ("\n".join([f"- {i}" for i in s_list]) if s_list else "해당 없음"))
-                
-                st.write("---")
-
-                # --- 실제 탭 데이터 매칭 ---
-                def find_matches(check_list, sheet_dict, file_type):
+                def find_matches(check_list, sheet_dict, f_type):
                     matched = []
                     cl_str = "".join(check_list).replace(" ", "")
                     for sn in sheet_dict.keys():
-                        sn_clean = str(sn).replace(" ", "")
-                        # 직접 매칭 또는 포괄 매칭
-                        if any(c.replace(" ", "") in sn_clean or sn_clean in c.replace(" ", "") for c in check_list):
+                        sn_c = str(sn).replace(" ", "")
+                        # 1. 탭 이름 직접 매칭
+                        if any(c.replace(" ", "") in sn_c or sn_c in c.replace(" ", "") for c in check_list):
                             matched.append(sn)
-                        elif file_type == "확인" and ("외관" in cl_str or "구조" in cl_str):
-                            if any(k in sn_clean for k in ["구조", "시료", "승인", "방법", "범위", "교정", "일자"]):
+                        # 2. 확인검사 예외 규칙 (외관/구조 관련)
+                        elif f_type == "확인" and any(k in cl_str for k in ["외관", "구조"]):
+                            if any(k in sn_c for k in ["구조", "시료", "승인", "방법", "범위", "교정", "일자"]):
+                                matched.append(sn)
+                        # 3. 통합시험 예외 규칙
+                        elif f_type == "통합" and any(k in cl_str for k in ["점검사항", "자료생성", "수집기"]):
+                            if any(k in sn_c for k in ["점검", "생성", "전송", "관제"]):
                                 matched.append(sn)
                     return list(set(matched))
 
-                c1, c2, c3 = st.columns(3)
                 all_data = []
+                c1, c2, c3 = st.columns(3)
 
                 with c1:
-                    st.subheader("1. 통합시험 조사표")
-                    matches = find_matches(r_list, r_sheets, "통합")
-                    for m in matches:
-                        with st.expander(f"✅ {m}"):
-                            st.dataframe(r_sheets[m].fillna(""))
-                            t = r_sheets[m].copy(); t.insert(0, '탭이름', m); all_data.append(t)
+                    st.header("1. 통합시험")
+                    m_r = find_matches(active, r_sheets, "통합")
+                    if m_r:
+                        for m in m_r:
+                            with st.expander(f"✅ {m}"):
+                                st.dataframe(r_sheets[m].fillna(""))
+                                t = r_sheets[m].copy(); t.insert(0, '시험분류', '통합시험'); t.insert(1, '탭이름', m)
+                                all_data.append(t)
+                    else: st.info("해당사항 없음")
 
                 with c2:
-                    st.subheader("2. 확인검사 조사표")
-                    matches = find_matches(c_list, c_sheets, "확인")
-                    for m in matches:
-                        with st.expander(f"✅ {m}"):
-                            st.dataframe(c_sheets[m].fillna(""))
-                            t = c_sheets[m].copy(); t.insert(0, '탭이름', m); all_data.append(t)
+                    st.header("2. 확인검사")
+                    m_c = find_matches(active, c_sheets, "확인")
+                    if m_c:
+                        for m in m_c:
+                            with st.expander(f"✅ {m}"):
+                                st.dataframe(c_sheets[m].fillna(""))
+                                t = c_sheets[m].copy(); t.insert(0, '시험분류', '확인검사'); t.insert(1, '탭이름', m)
+                                all_data.append(t)
+                    else: st.info("해당사항 없음")
 
                 with c3:
-                    st.subheader("3. 상대정확도 확인서")
-                    if s_list:
+                    st.header("3. 상대정확도")
+                    if any("상대" in c for c in active):
                         for m in s_sheets.keys():
                             with st.expander(f"✅ {m}"):
                                 st.dataframe(s_sheets[m].fillna(""))
-                                t = s_sheets[m].copy(); t.insert(0, '탭이름', m); all_data.append(t)
+                                t = s_sheets[m].copy(); t.insert(0, '시험분류', '상대정확도'); t.insert(1, '탭이름', m)
+                                all_data.append(t)
+                    else: st.info("해당사항 없음")
 
                 if all_data:
                     out = BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr:
                         pd.concat(all_data).to_excel(wr, index=False)
-                    st.download_button("📥 통합 결과 다운로드", out.getvalue(), "TMS_Matching_Result.xlsx")
+                    st.download_button("📥 결과 보고서 다운로드", out.getvalue(), "TMS_Result.xlsx")
