@@ -17,107 +17,93 @@ def load_data():
         
         xl_g = pd.ExcelFile(g_p)
         g_sn = next((s for s in xl_g.sheet_names if '가이드북' in s or '시험방법' in s), xl_g.sheet_names[0])
-        df = pd.read_excel(g_p, sheet_name=g_sn, skiprows=1)
+        
+        # 병합 헤더 처리
+        h_df = pd.read_excel(g_p, sheet_name=g_sn, nrows=2, header=None)
+        h_df.iloc[0] = h_df.iloc[0].ffill()
+        new_cols = []
+        for c1, c2 in zip(h_df.iloc[0], h_df.iloc[1]):
+            c1_s, c2_s = str(c1) if pd.notna(c1) else "", str(c2) if pd.notna(c2) else ""
+            name = f"{c1_s}_{c2_s}" if c1_s != c2_s and c2_s and "Unnamed" not in c2_s else c1_s
+            new_cols.append(name.strip())
+            
+        df = pd.read_excel(g_p, sheet_name=g_sn, skiprows=2, header=None)
+        df.columns = new_cols
         df.iloc[:, 1] = df.iloc[:, 1].ffill() 
         
-        r_s = pd.read_excel(r_p, sheet_name=None) if r_p else {}
-        c_s = pd.read_excel(c_p, sheet_name=None) if c_p else {}
-        s_s = pd.read_excel(s_p, sheet_name=None) if s_p else {}
-        return df, r_s, c_s, s_s, f_list
+        return df, pd.read_excel(r_p, sheet_name=None) if r_p else {}, \
+               pd.read_excel(c_p, sheet_name=None) if c_p else {}, \
+               pd.read_excel(s_p, sheet_name=None) if s_p else {}, f_list
     except Exception as e:
         return None, None, None, None, [str(e)]
 
 df, r_s, c_s, s_s, f_list = load_data()
 
-# ㅇ, O, ○, V 등 어떤 문자라도 포함되어 있으면 체크로 간주하는 함수
 def ck(v):
     if pd.isna(v): return False
-    s = str(v).replace(" ", "").upper()
-    # 한국어 'ㅇ'과 영문 'O', 동그라미 기호 등을 모두 포함
-    check_marks = ['O', 'ㅇ', '○', '◎', 'V', 'CHECK']
-    return any(m in s for m in check_marks)
+    return any(m in str(v).replace(" ", "").upper() for m in ['O', 'ㅇ', '○', 'V'])
 
-st.title("📋 수질 TMS 시험항목 (2025 최종 기준)")
+st.title("📋 수질 TMS 시험항목 (교체 규칙 적용)")
 
 if df is not None:
     q = st.text_input("개선내역 검색 (예: 기기교체)", "")
     if q:
-        res = df[df.iloc[:, 2].str.contains(q, na=False)].copy()
+        res = df[df.iloc[:, 2].astype(str).str.contains(q, na=False)].copy()
         if not res.empty:
             res['dn'] = res.apply(lambda x: f"[{x.iloc[1]}] {str(x.iloc[2]).strip()}", axis=1)
             sel = st.selectbox("항목선택", ["선택"] + res['dn'].tolist())
             
             if sel != "선택":
                 row = res[res['dn'] == sel].iloc[0]
+                is_replacement = "교체" in str(row.iloc[2]) # '교체' 키워드 확인
                 
-                # 'ㅇ'이 포함된 열 이름(시험종류) 추출
-                checked_columns = []
-                for col_name in df.columns:
-                    if ck(row[col_name]):
-                        checked_columns.append(str(col_name).strip())
+                # 1. 통합시험 필수 키워드 (교체 시)
+                r_must = ["일반현황", "점검사항", "자료생성", "측정기기-자료수집기", "자료수집기-관제센터"]
+                # 2. 확인검사 필수 키워드 (교체 시)
+                c_must = ["구조", "시료채취", "형식승인", "측정방법", "측정범위", "교정기능", "표준물질", "정도검사", "교정일자", "유량계", "누적값"]
 
-                # 상단에 선택된 시험 종류 표시
-                if checked_keywords := [c for c in checked_columns if c not in ["순번", "분류", "개선내역"]]:
-                    st.success(f"🔍 **판단된 시험 종류:** {', '.join(checked_keywords)}")
-                
                 all_d = []
                 col1, col2, col3 = st.columns(3)
 
-                # 1. 통합시험
                 with col1:
                     st.subheader("1. 통합시험")
-                    found_r = False
-                    for s_name in r_s.keys():
-                        s_clean = str(s_name).replace(" ", "")
-                        if any(kw.replace(" ", "") in s_clean or s_clean in kw.replace(" ", "") for kw in checked_columns):
-                            with st.expander(f"✅ {s_name}"):
-                                t = r_s[s_name].fillna(""); st.dataframe(t)
-                                t_exp = t.copy(); t_exp.insert(0, '시험', s_name); all_d.append(t_exp)
-                                found_r = True
-                    if not found_r: st.info("해당사항 없음")
+                    f_r = False
+                    for s_n in r_s.keys():
+                        s_c = str(s_n).replace(" ", "")
+                        # 교체면 필수항목이거나, 가이드북에 ㅇ가 있거나
+                        if (is_replacement and any(k in s_c for k in r_must)) or \
+                           any(ck(row[col]) and s_c in col.replace(" ", "") for col in df.columns):
+                            with st.expander(f"✅ {s_n}"):
+                                st.dataframe(r_s[s_n].fillna(""))
+                                t = r_s[s_n].copy(); t.insert(0, '시험', s_n); all_d.append(t); f_r = True
+                    if not f_r: st.info("해당사항 없음")
 
-                # 2. 확인검사 (입지조건, 유량계 포함)
                 with col2:
                     st.subheader("2. 확인검사")
-                    found_c = False
-                    w_sub = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
-                    flow_keywords = ["유량", "누적"]
-                    
-                    if c_s:
-                        for s_name in c_s.keys():
-                            s_clean = str(s_name).replace(" ", "")
-                            match = False
-                            
-                            # 1) 열 이름 매칭
-                            if any(kw.replace(" ", "") in s_clean or s_clean in kw.replace(" ", "") for kw in checked_columns):
-                                match = True
-                            # 2) 외관 및 구조 예외
-                            if not match and any("외관" in kw for kw in checked_columns):
-                                if any(sub in s_clean for sub in w_sub): match = True
-                            # 3) 유량계/누적값 예외
-                            if not match and any(f_kw in "".join(checked_columns) for f_kw in flow_keywords):
-                                if any(f_kw in s_clean for f_kw in flow_keywords): match = True
-                                    
-                            if match:
-                                with st.expander(f"✅ {s_name}"):
-                                    t = c_s[s_name].fillna(""); st.dataframe(t)
-                                    t_exp = t.copy(); t_exp.insert(0, '시험', s_name); all_d.append(t_exp)
-                                    found_c = True
-                    if not found_c: st.info("해당사항 없음")
+                    f_c = False
+                    for s_n in c_s.keys():
+                        s_c = str(s_n).replace(" ", "")
+                        # 교체 규칙 적용 (구조, 시료, 승인, 방법, 범위, 교정, 유량 등)
+                        if (is_replacement and any(k in s_c for k in c_must)) or \
+                           any(ck(row[col]) and s_c in col.replace(" ", "") for col in df.columns):
+                            with st.expander(f"✅ {s_n}"):
+                                st.dataframe(c_s[s_n].fillna(""))
+                                t = c_s[s_n].copy(); t.insert(0, '시험', s_n); all_d.append(t); f_c = True
+                    if not f_c: st.info("해당사항 없음")
 
-                # 3. 상대정확도
                 with col3:
                     st.subheader("3. 상대정확도")
-                    if any("상대" in kw for kw in checked_columns):
+                    f_s = False
+                    if any("상대" in str(col) and ck(row[col]) for col in df.columns):
                         if s_s:
                             k = list(s_s.keys())[0]
                             with st.expander("✅ 상대정확도"):
-                                t = s_s[k].fillna(""); st.dataframe(t)
-                                t_exp = t.copy(); t_exp.insert(0, '시험', '상대정확도'); all_d.append(t_exp)
-                    else: st.info("해당사항 없음")
+                                st.dataframe(s_s[k].fillna(""))
+                                t = s_s[k].copy(); t.insert(0, '시험', '상대정확도'); all_d.append(t); f_s = True
+                    if not f_s: st.info("해당사항 없음")
 
                 if all_d:
                     out = BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr:
                         pd.concat(all_d).to_excel(wr, index=False)
-                    st.download_button("📥 전체 결과 다운로드", out.getvalue(), "TMS_Report.xlsx")
+                    st.download_button("📥 결과 다운로드", out.getvalue(), "TMS_Report.xlsx")
