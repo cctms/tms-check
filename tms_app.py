@@ -16,30 +16,14 @@ st.markdown("""
         text-align: center !important; 
         margin-top: 30px !important;
         margin-bottom: 20px !important; 
-        line-height: 1.2 !important;
-        display: block !important;
     }
-    .chat-sub {
-        text-align: center;
-        color: #666;
-        font-size: 1.2rem;
-        margin-bottom: 40px;
-    }
+    .chat-sub { text-align: center; color: #666; font-size: 1.2rem; margin-bottom: 40px; }
     .section-header { 
-        background: #1E3A8A; 
-        color: white; 
-        padding: 12px; 
-        border-radius: 8px; 
-        text-align: center; 
-        font-weight: 700; 
-        font-size: 20px;
-        margin-bottom: 15px; 
+        background: #1E3A8A; color: white; padding: 12px; border-radius: 8px; 
+        text-align: center; font-weight: 700; font-size: 20px; margin-bottom: 15px; 
     }
-    /* 챗봇 느낌의 입력창 스타일 */
     .stTextInput > div > div > input {
-        border-radius: 25px !important;
-        padding: 15px 25px !important;
-        border: 2px solid #1E3A8A !important;
+        border-radius: 25px !important; padding: 15px 25px !important; border: 2px solid #1E3A8A !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -73,8 +57,7 @@ def load_all_resources():
         s_data = pd.read_excel(s_p, sheet_name=None) if s_p else {}
         
         return data_df, top_h, sub_h, {"통합시험": r_data, "확인검사": c_data, "상대정확도": s_data}
-    except:
-        return None, None, None, None
+    except: return None, None, None, None
 
 df, top_h, sub_h, survey_data = load_all_resources()
 
@@ -82,23 +65,26 @@ def is_ok(val):
     s = str(val).replace(" ", "").upper()
     return any(m in s for m in ['O', 'ㅇ', '○', 'V', '◎', '대상'])
 
-# 제목 및 챗봇 인사말
 st.markdown('<div class="super-title">수질TMS 개선내역에 따른 통합 조사표</div>', unsafe_allow_html=True)
-st.markdown('<p class="chat-sub">안녕하세요! 어떤 개선사항이 발생했나요? 아래에 질문해 주세요. 👋</p>', unsafe_allow_html=True)
+st.markdown('<p class="chat-sub">안녕하세요! 무엇을 도와드릴까요? (예: 측정기기 교체, 펌프 수리 등)</p>', unsafe_allow_html=True)
 
 if df is not None:
     c_left, c_mid, c_right = st.columns([1, 2, 1])
     with c_mid:
-        # 질문형 인터페이스
-        user_input = st.text_input("💬 질문하기", placeholder="예: 측정기기를 교체했는데 어떤 시험을 해야 하나요?")
+        user_input = st.text_input("💬 질문하기", placeholder="발생한 개선사항을 편하게 적어주세요.")
     
     if user_input:
-        # 간단한 형태소 분석 대용 (공백 기준 핵심 키워드 검색)
-        keywords = [k for k in user_input.split() if len(k) > 1]
+        # [수정 포인트] 단순 띄어쓰기 분리가 아니라, 
+        # 사용자의 입력 문장 전체를 데이터와 대조하거나 주요 단어(교체, 수리, 이전 등)를 추출
+        search_words = ["교체", "수리", "이전", "신규", "부품", "오버홀", "전송", "변경"]
+        found_keywords = [w for w in search_words if w in user_input]
         
-        # 키워드 중 하나라도 포함된 항목 찾기
+        # 만약 정의된 핵심 단어가 없다면 입력된 단어들로 검색
+        if not found_keywords:
+            found_keywords = [k for k in user_input.split() if len(k) > 1]
+
         mask = pd.Series([False] * len(df))
-        for kw in keywords:
+        for kw in found_keywords:
             mask |= df.iloc[:, 2].astype(str).str.contains(kw, na=False)
             
         matches = df[mask]
@@ -106,7 +92,7 @@ if df is not None:
         if not matches.empty:
             matches['dp'] = matches.apply(lambda x: f"[{x.iloc[1]}] {x.iloc[2]}", axis=1)
             with c_mid:
-                st.info(f"🧐 질문하신 내용과 관련된 {len(matches)}개의 개선내역을 찾았습니다.")
+                st.info(f"🧐 '{', '.join(found_keywords)}' 관련 내용을 찾았습니다.")
                 sel = st.selectbox("가장 적절한 항목을 선택해 주세요:", ["선택하세요"] + matches['dp'].tolist())
             
             if sel != "선택하세요":
@@ -121,8 +107,7 @@ if df is not None:
 
                 for i in range(3, len(df.columns)):
                     if is_ok(target_row[i]):
-                        cat_raw = str(top_h[i])
-                        name = str(sub_h[i])
+                        cat_raw = str(top_h[i]); name = str(sub_h[i])
                         
                         if "상대" in cat_raw:
                             main_cat = "상대정확도"; target_col = col3
@@ -146,7 +131,7 @@ if df is not None:
                                         combined_sheets[main_cat].append(pd.DataFrame([[""]]))
                                         found = True
                                         if main_cat != "상대정확도": break
-                                if not found: st.caption("⚠️ 데이터 매칭 실패")
+                                if not found: st.caption("⚠️ 시트 매칭 실패")
 
                 output_xlsx = BytesIO()
                 with pd.ExcelWriter(output_xlsx, engine='xlsxwriter') as writer:
@@ -156,7 +141,7 @@ if df is not None:
                 
                 st.divider()
                 if any(combined_sheets.values()):
-                    st.success(f"✅ 선택하신 '{sel}' 항목에 대한 통합 조사표가 준비되었습니다.")
+                    st.success(f"✅ 조사가 완료되었습니다. 파일을 다운로드해 주세요.")
                     st.download_button(
                         label="📥 통합 조사표 다운로드",
                         data=output_xlsx.getvalue(),
@@ -164,6 +149,4 @@ if df is not None:
                     )
         else:
             with c_mid:
-                st.warning("죄송합니다. 질문하신 내용과 관련된 개선내역을 찾지 못했어요. 핵심 단어(예: 교체, 수리, 이전)를 포함해 다시 말씀해 주시겠어요?")
-else:
-    st.error("데이터 파일을 불러올 수 없습니다.")
+                st.warning("단어를 조금만 더 단순하게 입력해 보시겠어요? (예: 기기 교체, 펌프 수리 등)")
