@@ -35,14 +35,6 @@ def ck(v):
     s = str(v).replace(" ", "").upper()
     return any(m in s for m in ['O', '○', 'V', 'CHECK'])
 
-def find_sheet_strict(sheets_dict, target_name):
-    if not sheets_dict: return None
-    t_clean = str(target_name).replace(" ", "")
-    for s_name in sheets_dict.keys():
-        s_clean = str(s_name).replace(" ", "")
-        if t_clean in s_clean or s_clean in t_clean: return s_name
-    return None
-
 st.title("📋 수질 TMS 시험항목")
 
 if df is not None:
@@ -63,28 +55,43 @@ if df is not None:
                     t_l = [("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5), ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8), ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)]
                     for nm, idx in t_l:
                         if ck(row.iloc[idx]) or (is_c and idx in [9, 10]):
-                            m_n = find_sheet_strict(r_s, nm)
-                            if m_n:
-                                with st.expander(f"✅ {nm}"):
-                                    t = r_s[m_n].fillna(""); st.dataframe(t)
-                                    t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
+                            # 통합시험 매칭 로직
+                            for s_name in r_s.keys():
+                                if nm.replace(" ", "") in str(s_name).replace(" ", ""):
+                                    with st.expander(f"✅ {nm}"):
+                                        t = r_s[s_name].fillna(""); st.dataframe(t)
+                                        t_exp = t.copy(); t_exp.insert(0, '시험', nm); all_d.append(t_exp)
 
                 with col2:
                     st.subheader("2. 확인검사")
-                    # 필수 포함 및 체크 기반 키워드 리스트
-                    c_guide = ["외관 및 구조", "전원전압 변동", "절연저항", "공급전압의 안정성", "반복성", "제로 및 스팬 드리프트", "응답시간", "직선성", "유입전류 안정성", "간섭영향", "검출한계"]
-                    w_guide = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
-                    # 누락되었던 필수 키워드 추가
-                    extra_kw = ["입지조건", "유량계", "누적값"]
+                    # 가이드북 컬럼 순서에 따른 매칭 키워드 (인덱스 11번부터 시작)
+                    # 입지조건, 유량계 등을 가이드북의 열 순서에 맞춰 리스트업했습니다.
+                    c_guide = [
+                        ("외관 및 구조", 11), ("전원전압 변동", 12), ("절연저항", 13), 
+                        ("공급전압의 안정성", 14), ("반복성", 15), ("제로 및 스팬 드리프트", 16), 
+                        ("응답시간", 17), ("직선성", 18), ("유입전류 안정성", 19), 
+                        ("간섭영향", 20), ("검출한계", 21), 
+                        ("입지조건", None), ("유량계", None) # 가이드북에 별도 열이 있다면 인덱스 추가 필요
+                    ]
                     
-                    active_keywords = [] + extra_kw
-                    for i, nm in enumerate(c_guide):
-                        if ck(row.iloc[11+i]):
-                            if nm == "외관 및 구조": active_keywords.extend(w_guide)
+                    # 만약 가이드북 엑셀에 '입지조건'이나 '유량계' 열이 별도로 있다면 
+                    # 아래 active_keywords에 추가되는 로직이 작동합니다.
+                    w_sub = ["구조", "시료", "승인", "방법", "범위", "물질", "일자"]
+                    active_keywords = []
+
+                    for nm, idx in c_guide:
+                        # 인덱스가 지정된 경우 해당 열의 체크 여부 확인
+                        if idx is not None and ck(row.iloc[idx]):
+                            if nm == "외관 및 구조": active_keywords.extend(w_sub)
                             else: active_keywords.append(nm)
+                        # 만약 명칭으로 가이드북 열을 찾아야 한다면 (예: 22번 이후 열에 입지조건 등이 있는 경우)
+                        elif idx is None:
+                            # 가이드북 행 전체에서 해당 명칭이 체크되었는지 확인하는 로직 (필요시)
+                            for col_idx, val in enumerate(row):
+                                if nm in str(df.columns[col_idx]) and ck(val):
+                                    active_keywords.append(nm)
                     
                     if c_s:
-                        # 엑셀 시트의 실제 탭 순서대로 순회
                         for s_name in c_s.keys():
                             s_clean = str(s_name).replace(" ", "")
                             if any(str(kw).replace(" ", "") in s_clean for kw in active_keywords):
