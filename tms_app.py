@@ -80,39 +80,43 @@ if guide_df is not None:
                 col1, col2, col3 = st.columns([1, 1, 1])
 
                 # [1. 통합시험 섹션 수정]
-                with col1:
-                    st.markdown("#### 📝 1. 통합시험")
-                    # 인덱스 3번부터 10번까지가 통합시험 1~8번 항목임
-                    test_items = [
-                        ("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
-                        ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
-                        ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)
-                    ]
-                    
-                    # '기기교체' 단어가 포함된 경우 1~8번을 강제로 활성화하거나 체크를 정밀하게 검사
-                    found_any_test = any(is_checked(target_row.iloc[idx]) for _, idx in test_items)
-                    
-                    if found_any_test:
-                        st.error("📍 수행 대상")
-                        for name, col_idx in test_items:
-                            # 엑셀에 체크가 되어 있거나, 기기교체 건에 대해 필수적인 7,8번 항목 강제 확인 로직 포함
-                            if is_checked(target_row.iloc[col_idx]) or ("교체" in selected_sub and col_idx in [9, 10]):
-                                clean_name = name.replace(" ", "")
-                                # 시트명 매칭 (공백 제거 후 비교)
-                                matched_name = next((s for s in report_sheets.keys() if s.replace(" ", "").strip() in clean_name or clean_name in s.replace(" ", "")), None)
-                                
-                                if matched_name:
-                                    with st.expander(f"✅ {name}", expanded=False):
-                                        df = report_sheets[matched_name].fillna("")
-                                        st.dataframe(df, use_container_width=True)
-                                        df_exp = df.copy()
-                                        df_exp.insert(0, '대분류', '통합시험')
-                                        df_exp.insert(1, '시험항목', name)
-                                        all_data_frames.append(df_exp)
-                                else:
-                                    st.write(f"✅ {name} (조사표 시트 미연결)")
-                    else:
-                        st.info("📍 대상 아님")
+with col1:
+    st.markdown("#### 📝 1. 통합시험")
+    test_items = [
+        ("1. 일반현황", 3), ("2. 하드웨어 규격", 4), ("3. 소프트웨어 기능 규격", 5),
+        ("4. 자료정의", 6), ("5. 측정기기 점검사항", 7), ("6. 자료생성", 8),
+        ("7. 측정기기-자료수집기", 9), ("8. 자료수집기-관제센터", 10)
+    ]
+    
+    found_any_test = any(is_checked(target_row.iloc[idx]) for _, idx in test_items)
+    
+    if found_any_test:
+        st.error("📍 수행 대상")
+        for name, col_idx in test_items:
+            # 체크되어 있거나 기기교체 시 7,8번 필수 포함
+            if is_checked(target_row.iloc[col_idx]) or ("교체" in selected_sub and col_idx in [9, 10]):
+                # --- 시트 매칭 로직 강화 ---
+                num_prefix = name.split('.')[0]  # "7", "8" 등 번호 추출
+                
+                # 1) 번호로 시작하거나 2) 이름의 핵심 키워드가 포함된 시트 찾기
+                matched_name = next((s for s in report_sheets.keys() if s.strip().startswith(num_prefix) or name.replace(" ", "") in s.replace(" ", "")), None)
+                
+                if matched_name:
+                    with st.expander(f"✅ {name}", expanded=False):
+                        df = report_sheets[matched_name].fillna("")
+                        st.dataframe(df, use_container_width=True)
+                        
+                        df_exp = df.copy()
+                        df_exp.insert(0, '대분류', '통합시험')
+                        df_exp.insert(1, '시험항목', name)
+                        all_data_frames.append(df_exp)
+                else:
+                    # 매칭 실패 시 현재 있는 시트 목록을 보여줘서 디버깅 유도
+                    st.warning(f"⚠️ {name} (시트 찾음 실패)")
+                    with st.expander("파일 내 시트 목록 보기"):
+                        st.write(list(report_sheets.keys()))
+    else:
+        st.info("📍 대상 아님")
 
                 # [2. 확인검사 섹션]
                 with col2:
@@ -165,3 +169,4 @@ if guide_df is not None:
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         final_df.to_excel(writer, index=False, sheet_name='수행항목리스트')
                     st.download_button(label="📥 전체 결과 엑셀 다운로드", data=output.getvalue(), file_name=f"TMS_Report_{selected_sub}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
